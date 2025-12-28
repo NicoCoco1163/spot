@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useClipboard, useIntervalFn } from '@vueuse/core'
-import { Calendar, Loader2, RefreshCcw, Share2, User } from 'lucide-vue-next'
+import { Calendar, ClipboardList, Loader2, RefreshCcw, Share2, User } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useAuthStore } from '~/stores/auth'
 
@@ -85,10 +85,88 @@ const isOccupying = ref(false)
 const showReleaseDialog = ref(false)
 const isReleasing = ref(false)
 
+const showManageDialog = ref(false)
+const isUpdating = ref(false)
+const manageRemark = ref('')
+
+function openManage(seat: any) {
+  if (!seat.isOccupied || seat.user?.id !== authStore.user?.id)
+    return
+
+  // 检查活动状态，如果是已取消或已结束，不允许修改
+  if (activity.value?.status === 'cancelled' || activity.value?.status === 'completed') {
+    toast.error('活动已结束或已取消，无法操作')
+    return
+  }
+
+  manageRemark.value = seat.remark || ''
+  showManageDialog.value = true
+}
+
+async function handleUpdateRemark() {
+  if (!mySeat.value)
+    return
+
+  isUpdating.value = true
+  try {
+    await $fetch('/api/activities/seats/update-remark', {
+      method: 'POST',
+      body: {
+        activityId: Number.parseInt(activityId),
+        seatNumber: mySeat.value.seatNumber,
+        remark: manageRemark.value,
+      },
+    })
+    toast.success('备注已更新')
+    showManageDialog.value = false
+    refresh()
+  }
+  catch (err: any) {
+    const msg = err.data?.message || err.statusMessage || err.message || '更新失败'
+    toast.error(msg)
+  }
+  finally {
+    isUpdating.value = false
+  }
+}
+
 function handleShare() {
   const url = window.location.href
   copy(url)
   toast.success('链接已复制，快去邀请伙伴吧！')
+}
+
+function handleCopyCSV() {
+  if (!seats.value || seats.value.length === 0) {
+    toast.warning('暂无数据')
+    return
+  }
+
+  // Filter occupied seats
+  const occupiedSeats = seats.value.filter(s => s.isOccupied && s.user)
+
+  if (occupiedSeats.length === 0) {
+    toast.warning('暂无报名数据')
+    return
+  }
+
+  // Generate CSV content
+  const header = '序号,用户名,昵称,备注\n'
+  const rows = occupiedSeats
+    .sort((a, b) => a.seatNumber - b.seatNumber)
+    .map((s) => {
+      // @ts-expect-error username property exists on user object
+      const username = s.user?.username || ''
+      const nickname = s.user?.nickname || ''
+      // Escape commas in remark
+      const remark = (s.remark || '').replace(/,/g, '，').replace(/\n/g, ' ')
+      return `${s.seatNumber},${username},${nickname},${remark}`
+    })
+    .join('\n')
+
+  const csvContent = header + rows
+  copy(csvContent)
+  toast.success('表演顺序已复制到剪贴板 (CSV格式)')
 }
 
 function openOccupy(seat: any) {
@@ -121,7 +199,7 @@ function openOccupy(seat: any) {
     if (seat.user?.id === authStore.user?.id) {
       // If activity is cancelled/completed, I already returned.
       // If activity is full, I should be allowed to release to make space.
-      showReleaseDialog.value = true
+      openManage(seat)
     }
     else {
       // Show info of occupant? Already visible.
@@ -227,6 +305,9 @@ function goEdit() {
         <Button v-if="authStore.user?.isAdmin" variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300 active:scale-90" @click="handleShare">
           <Share2 class="w-4 h-4" />
         </Button>
+        <Button v-if="authStore.user?.isAdmin" variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300 active:scale-90" @click="handleCopyCSV">
+          <ClipboardList class="w-4 h-4" />
+        </Button>
         <Button variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300 active:scale-90 active:rotate-180" :disabled="isRefreshing" @click="() => refresh()">
           <RefreshCcw class="w-4 h-4" :class="{ 'animate-spin': isRefreshing }" />
         </Button>
@@ -248,7 +329,7 @@ function goEdit() {
               {{ dayjs(activity.startTime).format('YYYY年MM月DD日') }} <span class="text-sm font-normal text-gray-400 ml-1">{{ dayjs(activity.startTime).format('ddd') }}</span>
             </div>
             <div class="text-gray-500 text-sm mt-0.5 font-medium">
-              {{ dayjs(activity.startTime).format('HH:mm') }} - {{ activity.endTime ? dayjs(activity.endTime).format('HH:mm') : '结束时间未定' }}
+              {{ dayjs(activity.startTime).format('HH:mm') }} - {{ activity.endTime ? dayjs(activity.endTime).format('HH:mm') : '未设置结束时间' }}
             </div>
           </div>
         </div>
@@ -330,7 +411,7 @@ function goEdit() {
                   class="text-[10px] h-[16px] line-clamp-1 w-full break-all truncate"
                   :class="seat.user?.id === authStore.user?.id ? 'text-white/70' : 'text-gray-500'"
                 >
-                  {{ seat.remark || '未知' }}
+                  {{ seat.remark || (seat.user?.id ? '未填写' : '') }}
                 </div>
               </div>
             </button>
@@ -376,6 +457,47 @@ function goEdit() {
           <Button size="sm" variant="destructive" :disabled="isOccupying" @click="handleOccupy">
             {{ isOccupying ? '处理中...' : '确认抢占' }}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Manage Dialog (Update Remark or Release) -->
+    <Dialog v-model:open="showManageDialog">
+      <DialogContent class="max-w-[90%] rounded-2xl top-[20%] translate-y-0 sm:top-[50%] sm:-translate-y-1/2">
+        <DialogHeader>
+          <DialogTitle>管理我的位次 ({{ mySeat?.seatNumber }}号)</DialogTitle>
+          <DialogDescription>
+            修改备注信息或释放该位次
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="space-y-4 py-4">
+          <div class="space-y-2">
+            <Label>备注</Label>
+            <Input
+              v-model="manageRemark"
+              placeholder="例如：表演的歌曲名称"
+              class="h-12"
+            />
+          </div>
+        </div>
+
+        <DialogFooter class="flex-col sm:flex-row gap-3 sm:justify-between">
+          <Button
+            size="sm"
+            variant="destructive"
+            @click="() => { showManageDialog = false; showReleaseDialog = true }"
+          >
+            释放位次
+          </Button>
+          <div class="flex gap-3 w-full sm:w-auto">
+            <Button class="flex-1 sm:flex-none" size="sm" variant="outline" @click="showManageDialog = false">
+              取消
+            </Button>
+            <Button class="flex-1 sm:flex-none" size="sm" :disabled="isUpdating" @click="handleUpdateRemark">
+              {{ isUpdating ? '保存中...' : '保存修改' }}
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

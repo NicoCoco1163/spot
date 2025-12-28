@@ -12,6 +12,12 @@ definePageMeta({
 
 const authStore = useAuthStore()
 const router = useRouter()
+const route = useRoute()
+const ua = ref('')
+
+onMounted(() => {
+  ua.value = navigator.userAgent
+})
 
 const form = useForm({
   validationSchema: toTypedSchema(
@@ -36,7 +42,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 
 <template>
   <div class="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-    <div class="w-full max-w-[85%] space-y-6 mb-6">
+    <div class="w-full max-w-sm space-y-6 mb-6 px-6">
       <div class="text-center space-y-2">
         <h1 class="text-2xl font-bold">
           欢迎回来
@@ -77,6 +83,18 @@ const onSubmit = form.handleSubmit(async (values) => {
         <NuxtLink to="/register" class="text-primary font-medium hover:underline">
           去注册
         </NuxtLink>
+      </div>
+
+      <div class="mt-8 py-4 border-t text-xs text-gray-400 break-all space-y-2">
+        <div>
+          <span class="font-medium">UA:</span> {{ ua }}
+        </div>
+        <div>
+          <span class="font-medium">OpenID:</span> {{ authStore.user?.openid || '-' }}
+        </div>
+        <div>
+          <span class="font-medium">Query:</span> {{ JSON.stringify(route.query) }}
+        </div>
       </div>
     </div>
   </div>

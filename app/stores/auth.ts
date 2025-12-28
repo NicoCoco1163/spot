@@ -60,6 +60,13 @@ export const useAuthStore = defineStore('auth', {
       })
       this.user = user
     },
+    async loginWithWechat(code: string) {
+      const { user } = await $fetch<{ user: IUser }>('/api/auth/wechat-login', {
+        method: 'POST',
+        body: { code },
+      })
+      this.user = user
+    },
   },
   persist: true, // 使用 pinia-plugin-persistedstate
 })
