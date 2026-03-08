@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useClipboard, useIntervalFn } from '@vueuse/core'
-import { Calendar, ClipboardList, Loader2, RefreshCcw, Share2, User } from 'lucide-vue-next'
+import { Calendar, ClipboardList, Loader2, RefreshCcw, Share2, User, Users } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { useAuthStore } from '~/stores/auth'
 
@@ -38,42 +38,50 @@ if (error.value) {
 
 const activity = computed(() => data.value?.activity)
 const seats = computed(() => data.value?.seats || [])
+const phase = computed(() => data.value?.phase || 'registration')
+const registrationCount = computed(() => data.value?.registrationCount || 0)
+const myRegistration = computed(() => data.value?.myRegistration)
 
 // Check if current user has a seat
 const mySeat = computed(() => seats.value.find(s => s.user?.id === authStore.user?.id))
+
+// Computed max participants (seats count for booking phase)
+const maxParticipants = computed(() => {
+  if (phase.value === 'booking') {
+    return seats.value.length || registrationCount.value
+  }
+  return registrationCount.value
+})
 
 const activityStatus = computed(() => {
   if (!activity.value)
     return null
   const occupiedCount = seats.value.filter(s => s.isOccupied).length
-  const isFull = occupiedCount >= activity.value.maxParticipants
+  const isFull = occupiedCount >= maxParticipants.value
 
   if (activity.value.status === 'cancelled') {
     return {
-      class: 'bg-gray-100 text-gray-500 border-gray-200',
+      class: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
       text: '已取消',
       canOperate: false,
     }
   }
   if (activity.value.status === 'completed') {
     return {
-      class: 'bg-gray-100 text-gray-500 border-gray-200',
+      class: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/25',
       text: '已结束',
       canOperate: false,
     }
   }
+  // 报名中和抢座中状态已在第一个 Badge 中显示，这里不再重复
   if (isFull) {
     return {
-      class: 'bg-red-50 text-red-500 border-red-100',
+      class: 'bg-red-500/15 text-red-400 border-red-500/25',
       text: '已满',
-      canOperate: false, // Technically full, so cannot join. Can release? logic handled separately.
+      canOperate: false,
     }
   }
-  return {
-    class: 'bg-emerald-50 text-emerald-500 border-emerald-100',
-    text: '报名中',
-    canOperate: true,
-  }
+  return null
 })
 
 // Dialogs
@@ -88,6 +96,13 @@ const isReleasing = ref(false)
 const showManageDialog = ref(false)
 const isUpdating = ref(false)
 const manageRemark = ref('')
+
+// Registration refresh
+const registrationFormKey = ref(0)
+function onRegistrationSuccess() {
+  refresh()
+  registrationFormKey.value++
+}
 
 function openManage(seat: any) {
   if (!seat.isOccupied || seat.user?.id !== authStore.user?.id)
@@ -170,46 +185,25 @@ function handleCopyCSV() {
 }
 
 function openOccupy(seat: any) {
-  // Check activity status
-  if (!activityStatus.value)
-    return
-
   // If cancelled or completed, disallow all interactions
   if (activity.value?.status === 'cancelled' || activity.value?.status === 'completed') {
     toast.error('活动已结束或已取消，无法操作')
     return
   }
 
-  // If Full, check logic
-  // "merely [Registration Open] can click to register and release"
-  // If text is "已满", user wants to restrict actions?
-  // If I strictly follow: if status != '报名中', return.
-  // But if I am IN the seat, I should be able to release even if full.
-  // However, the user said "merely [Registration Open] can click to register AND release".
-  // This implies if it's NOT [Registration Open], I cannot release.
-  // This might be what they want.
-  // But logic: if I am in seat, and it is full, status is "已满". If I can't release, I am stuck.
-  // I will assume "Registration Open" means "Activity is Active".
-  // But wait, the badge says "已满".
-  // Let's implement a check: if status text is "已满", can I release?
-  // I'll allow release if I hold the seat. I'll block occupy if full.
-
   if (seat.isOccupied) {
     // If occupied by me, ask to release
     if (seat.user?.id === authStore.user?.id) {
-      // If activity is cancelled/completed, I already returned.
-      // If activity is full, I should be allowed to release to make space.
       openManage(seat)
     }
     else {
-      // Show info of occupant? Already visible.
+      // Show info of occupant
       toast.info(`该位置已被 ${getUserNickname(seat.user)} 抢占`)
     }
     return
   }
 
-  // If trying to occupy empty seat
-  if (activityStatus.value.text === '已满') {
+  if (activityStatus.value?.text === '已满') {
     toast.warning('活动人数已满，无法报名')
     return
   }
@@ -220,7 +214,20 @@ function openOccupy(seat: any) {
   }
 
   selectedSeatNumber.value = seat.seatNumber
-  remark.value = ''
+  // Pre-fill remark with registration info
+  if (myRegistration.value) {
+    const parts = []
+    if (myRegistration.value.song)
+      parts.push(myRegistration.value.song)
+    if (myRegistration.value.captain)
+      parts.push(`队长: ${myRegistration.value.captain}`)
+    if (myRegistration.value.members)
+      parts.push(myRegistration.value.members)
+    remark.value = parts.join(' | ')
+  }
+  else {
+    remark.value = ''
+  }
   showOccupyDialog.value = true
 }
 
@@ -285,9 +292,9 @@ function goEdit() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50 pb-20 relative">
+  <div class="min-h-screen bg-gray-50 pb-12 relative">
     <!-- Header -->
-    <div class="sticky top-0 z-50 bg-[#1c1c1e] text-white backdrop-blur-xl px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden mb-4">
+    <div class="sticky top-0 z-50 bg-[#1c1c1e] text-white backdrop-blur-xl px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden">
       <!-- Header Background Decoration -->
       <div class="absolute -right-4 -top-10 h-24 w-24 rounded-full bg-white/5 blur-2xl pointer-events-none" />
       <div class="absolute -left-4 -top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
@@ -305,7 +312,7 @@ function goEdit() {
         <Button v-if="authStore.user?.isAdmin" variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300 active:scale-90" @click="handleShare">
           <Share2 class="w-4 h-4" />
         </Button>
-        <Button v-if="authStore.user?.isAdmin" variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300 active:scale-90" @click="handleCopyCSV">
+        <Button v-if="authStore.user?.isAdmin && phase === 'booking'" variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300 active:scale-90" @click="handleCopyCSV">
           <ClipboardList class="w-4 h-4" />
         </Button>
         <Button variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300 active:scale-90 active:rotate-180" :disabled="isRefreshing" @click="() => refresh()">
@@ -317,107 +324,112 @@ function goEdit() {
       </div>
     </div>
 
-    <div v-if="activity" class="p-4 max-w-2xl mx-auto space-y-6">
-      <!-- Info Section -->
-      <div class="bg-white rounded-2xl p-4 space-y-4">
-        <div class="flex items-start gap-4">
-          <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 text-indigo-500">
-            <Calendar class="w-5 h-5" />
-          </div>
-          <div class="pt-0.5">
-            <div class="font-bold text-gray-900 text-lg tracking-tight">
-              {{ dayjs(activity.startTime).format('YYYY年MM月DD日') }} <span class="text-sm font-normal text-gray-400 ml-1">{{ dayjs(activity.startTime).format('ddd') }}</span>
-            </div>
-            <div class="text-gray-500 text-sm mt-0.5 font-medium">
-              {{ dayjs(activity.startTime).format('HH:mm') }} - {{ activity.endTime ? dayjs(activity.endTime).format('HH:mm') : '未设置结束时间' }}
-            </div>
-          </div>
-        </div>
+    <div v-if="activity" class="p-4 max-w-2xl mx-auto space-y-4">
+      <!-- Activity Hero Card -->
+      <div class="relative overflow-hidden rounded-2xl bg-[#1c1c1e] text-white shadow-lg">
+        <!-- Background Decoration -->
+        <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/5 blur-3xl pointer-events-none" />
+        <div class="absolute -left-10 -bottom-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
 
-        <div class="flex items-start gap-4">
-          <div class="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center shrink-0 text-orange-500">
-            <User class="w-5 h-5" />
-          </div>
-          <div class="pt-0.5 w-full">
-            <div class="flex justify-between items-center mb-1">
-              <div class="font-bold text-gray-900 text-lg tracking-tight">
-                {{ seats.filter(s => s.isOccupied).length }} / {{ activity.maxParticipants }} <span class="text-sm font-normal text-gray-400">人</span>
-              </div>
-              <span
+        <div class="relative z-10 p-4">
+          <!-- Phase & Status Row -->
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <Badge
+                class="border px-2.5 py-1 text-[11px] font-semibold shadow-sm"
+                :class="phase === 'registration'
+                  ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25'
+                  : 'bg-orange-500/15 text-orange-400 border-orange-500/25'"
+              >
+                {{ phase === 'registration' ? '报名中' : '抢座中' }}
+              </Badge>
+              <Badge
                 v-if="activityStatus"
-                class="text-xs font-bold px-2 py-0.5 text-[10px] rounded-full border"
+                class="border px-2.5 py-1 text-[11px] font-semibold shadow-sm"
                 :class="activityStatus.class"
               >
                 {{ activityStatus.text }}
-              </span>
+              </Badge>
             </div>
-            <!-- Progress Bar -->
-            <div class="h-1.5 w-full bg-gray-100 rounded-full overflow-hidden mt-2">
-              <div
-                class="h-full rounded-full transition-all duration-500"
-                :class="seats.filter(s => s.isOccupied).length >= activity.maxParticipants ? 'bg-red-500' : 'bg-emerald-500'"
-                :style="{ width: `${(seats.filter(s => s.isOccupied).length / activity.maxParticipants) * 100}%` }"
-              />
+            <div class="flex items-center gap-1.5 text-white/50">
+              <Users class="w-4 h-4" />
+              <span class="text-sm font-medium font-mono tabular-nums">{{ registrationCount }} 人已报名</span>
             </div>
           </div>
-        </div>
 
-        <div v-if="activity.description" class="pt-4 border-t border-gray-100 text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
-          {{ activity.description || '暂无活动描述' }}
-        </div>
-      </div>
-
-      <!-- Seats Grid -->
-      <div>
-        <h2 class="font-bold text-gray-900 text-lg mb-4 px-1 flex justify-between items-center tracking-tight">
-          <span>表演顺序</span>
-          <span v-if="mySeat" class="bg-black px-3 py-1.5 rounded-md shadow-md shadow-black/10 flex items-center gap-2">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span class="text-xs text-white">我的位次 {{ mySeat.seatNumber }}号</span>
-          </span>
-        </h2>
-
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div
-            v-for="seat in seats"
-            :key="seat.id"
-            class="relative"
-          >
-            <button
-              class="w-full h-[88px] rounded-xl flex flex-col justify-between p-2.5 transition-all duration-300 text-left relative overflow-hidden group border"
-              :class="[
-                seat.isOccupied
-                  ? (seat.user?.id === authStore.user?.id
-                    ? 'bg-black text-white scale-[1.02] z-10'
-                    : 'bg-white text-gray-900')
-                  : 'bg-gray-50/50 border-gray-200/60 border-dashed text-gray-400 hover:border-gray-300 hover:bg-gray-100 active:scale-[0.98]',
-              ]"
-              @click="openOccupy(seat)"
-            >
-              <div class="flex justify-between items-start w-full">
-                <span class="text-base font-bold transition-opacity leading-none" :class="seat.isOccupied && seat.user?.id === authStore.user?.id ? 'text-white/40' : 'opacity-40 group-hover:opacity-60'">{{ seat.seatNumber }}</span>
-                <span v-if="seat.isOccupied && seat.occupiedAt" class="text-[10px] font-mono leading-none" :class="seat.user?.id === authStore.user?.id ? 'text-white/40' : 'text-gray-400'">
-                  {{ dayjs(seat.occupiedAt).format('HH:mm') }}
-                </span>
+          <!-- Time & Date Info -->
+          <div class="flex items-start gap-3 mb-4">
+            <div class="w-11 h-11 rounded-xl bg-indigo-500/15 flex items-center justify-center shrink-0 text-indigo-400 border border-indigo-500/20">
+              <Calendar class="w-5 h-5" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="font-bold text-lg text-white/90 tracking-tight font-mono tabular-nums">
+                {{ dayjs(activity.startTime).format('YYYY年MM月DD日') }}
+                <span class="text-sm font-normal text-white/40 ml-1">{{ dayjs(activity.startTime).format('ddd') }}</span>
               </div>
+              <div class="text-white/50 text-sm mt-0.5 font-medium font-mono tabular-nums">
+                {{ dayjs(activity.startTime).format('HH:mm') }} - {{ activity.endTime ? dayjs(activity.endTime).format('HH:mm') : '未设置结束时间' }}
+              </div>
+            </div>
+          </div>
 
-              <div class="w-full">
-                <div class="font-bold truncate tracking-tight leading-none mb-1.5" :class="[seat.isOccupied ? 'text-sm' : 'text-xs', seat.user?.id === authStore.user?.id ? 'text-white' : '']">
-                  {{ seat.isOccupied ? getUserNickname(seat.user) : '虚位以待' }}
+          <!-- Participants Progress -->
+          <div class="flex items-start gap-3">
+            <div class="w-11 h-11 rounded-xl bg-orange-500/15 flex items-center justify-center shrink-0 text-orange-400 border border-orange-500/20">
+              <User class="w-5 h-5" />
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex justify-between items-center mb-2">
+                <div class="font-bold text-lg text-white/90 tracking-tight font-mono tabular-nums">
+                  {{ seats.filter(s => s.isOccupied).length }} / {{ maxParticipants }}
+                  <span class="text-sm font-normal text-white/40 ml-1">人</span>
                 </div>
-
-                <!-- Remark Display -->
+              </div>
+              <div class="h-2 w-full bg-white/10 rounded-full overflow-hidden">
                 <div
-                  class="text-[10px] h-[16px] line-clamp-1 w-full break-all truncate"
-                  :class="seat.user?.id === authStore.user?.id ? 'text-white/70' : 'text-gray-500'"
-                >
-                  {{ seat.remark || (seat.user?.id ? '未填写' : '') }}
-                </div>
+                  class="h-full rounded-full transition-all duration-500"
+                  :class="seats.filter(s => s.isOccupied).length >= maxParticipants ? 'bg-red-500' : 'bg-emerald-500'"
+                  :style="{ width: `${Math.min((seats.filter(s => s.isOccupied).length / maxParticipants) * 100, 100)}%` }"
+                />
               </div>
-            </button>
+            </div>
           </div>
         </div>
       </div>
+
+      <!-- Countdown Timer Card -->
+      <PhaseIndicator
+        v-if="phase === 'registration' && activity.registrationDeadline"
+        :phase="phase"
+        :registration-deadline="activity.registrationDeadline"
+        :registration-count="registrationCount"
+      />
+
+      <!-- Description Card -->
+      <div v-if="activity.description" class="bg-white rounded-xl border p-4 shadow-xs">
+        <p class="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
+          {{ activity.description }}
+        </p>
+      </div>
+
+      <!-- Registration Phase Form -->
+      <ActivityRegistrationPhase
+        v-if="phase === 'registration'"
+        :activity-id="activity.id"
+        :registration-form-key="registrationFormKey"
+        :my-registration="myRegistration"
+        @success="onRegistrationSuccess"
+      />
+
+      <!-- Booking Phase Content -->
+      <ActivityBookingPhase
+        v-else
+        :seats="seats"
+        :my-seat="mySeat"
+        :my-registration="myRegistration"
+        :current-user-id="authStore.user?.id"
+        @seat-click="openOccupy"
+      />
     </div>
 
     <!-- Loading/Error State -->
@@ -433,7 +445,9 @@ function goEdit() {
     <Dialog v-model:open="showOccupyDialog">
       <DialogContent class="max-w-[90%] rounded-2xl top-[20%] translate-y-0 sm:top-[50%] sm:-translate-y-1/2">
         <DialogHeader>
-          <DialogTitle>抢占 {{ selectedSeatNumber }} 号位次</DialogTitle>
+          <DialogTitle class="font-mono tabular-nums">
+            抢占 {{ selectedSeatNumber }} 号位次
+          </DialogTitle>
           <DialogDescription>
             确认后将为您锁定该位置
           </DialogDescription>
@@ -465,7 +479,9 @@ function goEdit() {
     <Dialog v-model:open="showManageDialog">
       <DialogContent class="max-w-[90%] rounded-2xl top-[20%] translate-y-0 sm:top-[50%] sm:-translate-y-1/2">
         <DialogHeader>
-          <DialogTitle>管理我的位次 ({{ mySeat?.seatNumber }}号)</DialogTitle>
+          <DialogTitle class="font-mono tabular-nums">
+            管理我的位次 ({{ mySeat?.seatNumber }}号)
+          </DialogTitle>
           <DialogDescription>
             修改备注信息或释放该位次
           </DialogDescription>
@@ -508,7 +524,7 @@ function goEdit() {
         <DialogHeader>
           <DialogTitle>释放位次</DialogTitle>
           <DialogDescription>
-            确定要放弃 {{ mySeat?.seatNumber }} 号位次吗？
+            <span class="font-mono tabular-nums">确定要放弃 {{ mySeat?.seatNumber }} 号位次吗？</span>
           </DialogDescription>
         </DialogHeader>
 

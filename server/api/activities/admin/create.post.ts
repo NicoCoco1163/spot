@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { activities, activitySeats } from '../../../database/schema'
+import { activities } from '../../../database/schema'
 import { db } from '../../../utils/db'
 
 const createActivitySchema = z.object({
@@ -7,7 +7,7 @@ const createActivitySchema = z.object({
   description: z.string().optional(),
   startTime: z.coerce.date(),
   endTime: z.coerce.date().optional(),
-  maxParticipants: z.number().int().min(1, '参与人数必须大于0'),
+  registrationDeadline: z.coerce.date(), // 报名截止时间，必填
 })
 
 export default defineEventHandler(async (event) => {
@@ -21,28 +21,21 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const validation = createActivitySchema.safeParse(body)
   if (!validation.success) {
-    throw createError({ statusCode: 400, message: validation.error.issues[0].message })
+    const firstError = validation.error.issues[0]
+    throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
   const data = validation.data
 
-  // 3. 事务创建活动及座位
-  const newActivity = db.transaction((tx) => {
-    // 3.1 创建活动
-    const activity = tx.insert(activities).values({
-      ...data,
-      creatorId: user.id,
-    }).returning().get()
+  // 3. 校验截止时间必须早于开始时间
+  if (data.registrationDeadline >= data.startTime) {
+    throw createError({ statusCode: 400, message: '报名截止时间必须早于活动开始时间' })
+  }
 
-    // 3.2 批量创建座位
-    const seatsToInsert = Array.from({ length: data.maxParticipants }, (_, i) => ({
-      activityId: activity.id,
-      seatNumber: i + 1,
-    }))
-
-    tx.insert(activitySeats).values(seatsToInsert).run()
-
-    return activity
-  })
+  // 4. 创建活动（不创建座位，座位在截止后懒加载创建）
+  const newActivity = db.insert(activities).values({
+    ...data,
+    creatorId: user.id,
+  }).returning().get()
 
   return { activity: newActivity }
 })

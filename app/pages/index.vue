@@ -50,6 +50,15 @@ function getActivityStatus(item: any) {
       text: '已结束',
     }
   }
+  // Check phase
+  if (item.phase === 'registration') {
+    return {
+      class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      text: '报名中',
+      canOperate: true,
+    }
+  }
+  // Booking phase
   if (item.occupiedCount >= item.maxParticipants) {
     return {
       class: 'bg-red-500/10 text-red-400 border-red-500/20',
@@ -57,8 +66,8 @@ function getActivityStatus(item: any) {
     }
   }
   return {
-    class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    text: '报名中',
+    class: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+    text: '抢座中',
     canOperate: true,
   }
 }
@@ -167,7 +176,7 @@ async function onTouchEnd() {
 
 <template>
   <div
-    class="min-h-screen bg-gray-50 pb-20"
+    class="min-h-screen bg-gray-50 pb-12"
     @touchstart="onTouchStart"
     @touchmove="onTouchMove"
     @touchend="onTouchEnd"
@@ -186,7 +195,7 @@ async function onTouchEnd() {
 
     <!-- Header -->
     <div
-      class="sticky top-0 z-50 bg-[#1c1c1e] backdrop-blur-xl text-white px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden mb-4"
+      class="sticky top-0 z-50 bg-[#1c1c1e] backdrop-blur-xl text-white px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden"
     >
       <!-- Header Background Decoration -->
       <div class="absolute -right-4 -top-10 h-24 w-24 rounded-full bg-white/5 blur-2xl pointer-events-none" />
@@ -279,19 +288,26 @@ async function onTouchEnd() {
               <div class="flex items-center justify-between pt-3 border-t border-white/5">
                 <div class="flex flex-col gap-1.5 w-full mr-4 flex-1 min-w-0">
                   <div class="flex justify-between text-[10px] font-medium text-white/40">
-                    <span>剩余位次</span>
-                    <span class="font-mono tracking-tight" :class="item.maxParticipants - item.occupiedCount > 0 ? 'text-emerald-400' : 'text-red-400'">
-                      {{ item.maxParticipants - item.occupiedCount }} / {{ item.maxParticipants }}
+                    <span>{{ item.phase === 'registration' ? '已报名' : '剩余位次' }}</span>
+                    <span class="font-mono tracking-tight" :class="item.phase === 'registration' ? 'text-emerald-400' : (item.maxParticipants - item.occupiedCount > 0 ? 'text-emerald-400' : 'text-red-400')">
+                      <template v-if="item.phase === 'registration'">
+                        {{ item.registrationCount || 0 }} 人
+                      </template>
+                      <template v-else>
+                        {{ item.maxParticipants - item.occupiedCount }} / {{ item.maxParticipants }}
+                      </template>
                     </span>
                   </div>
                   <div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
                     <Motion
+                      v-if="item.phase === 'booking'"
                       class="h-full rounded-full shadow-[0_0_8px_rgba(0,0,0,0.3)]"
                       :class="item.occupiedCount >= item.maxParticipants ? 'bg-red-500' : 'bg-emerald-500'"
                       :initial="{ width: 0 }"
                       :animate="{ width: `${Math.min((item.occupiedCount / item.maxParticipants) * 100, 100)}%` }"
                       :transition="{ duration: 1, ease: 'easeOut' }"
                     />
+                    <div v-else class="h-full rounded-full bg-emerald-500/50" :style="{ width: `${Math.min((item.registrationCount || 0) * 10, 100)}%` }" />
                   </div>
                 </div>
 

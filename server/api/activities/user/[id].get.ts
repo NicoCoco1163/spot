@@ -1,6 +1,7 @@
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, count } from 'drizzle-orm'
 import { z } from 'zod'
-import { activities, activitySeats, users } from '../../../database/schema'
+import { activities, activitySeats, registrations, users } from '../../../database/schema'
+import { getActivityPhase } from '../../../utils/activity-phase'
 import { db } from '../../../utils/db'
 
 const paramsSchema = z.object({
@@ -25,7 +26,36 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: '活动不存在' })
   }
 
-  // 4. 获取座位详情（包含占用者的信息）
+  // 4. 判断当前阶段
+  const phase = getActivityPhase(activity)
+
+  // 5. 获取报名数量
+  const registrationCountResult = db.select({ count: count() })
+    .from(registrations)
+    .where(eq(registrations.activityId, activityId))
+    .get()
+  const registrationCount = registrationCountResult?.count || 0
+
+  // 6. 如果是抢座阶段，检查是否需要懒加载创建座位
+  if (phase === 'booking') {
+    const existingSeatsCount = db.select({ count: count() })
+      .from(activitySeats)
+      .where(eq(activitySeats.activityId, activityId))
+      .get()
+
+    // 如果座位不存在，根据报名人数创建座位
+    if (!existingSeatsCount?.count || existingSeatsCount.count === 0) {
+      if (registrationCount > 0) {
+        const seatsToInsert = Array.from({ length: registrationCount }, (_, i) => ({
+          activityId,
+          seatNumber: i + 1,
+        }))
+        db.insert(activitySeats).values(seatsToInsert).run()
+      }
+    }
+  }
+
+  // 7. 获取座位详情（包含占用者的信息）
   const seats = db.select({
     id: activitySeats.id,
     seatNumber: activitySeats.seatNumber,
@@ -51,8 +81,20 @@ export default defineEventHandler(async (event) => {
     user: seat.isOccupied ? seat.user : null,
   }))
 
+  // 8. 获取当前用户的报名信息
+  const myRegistration = db.select()
+    .from(registrations)
+    .where(and(
+      eq(registrations.activityId, activityId),
+      eq(registrations.userId, user.id),
+    ))
+    .get()
+
   return {
     activity,
     seats: formattedSeats,
+    phase,
+    registrationCount,
+    myRegistration,
   }
 })

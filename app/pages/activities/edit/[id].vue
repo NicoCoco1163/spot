@@ -32,7 +32,7 @@ const activity = computed(() => data.value?.activity)
 const formSchema = toTypedSchema(z.object({
   title: z.string({ required_error: '请输入标题' }).min(1, '请输入标题'),
   description: z.string().optional(),
-  maxParticipants: z.coerce.number({ required_error: '请输入人数' }).int().min(1, '人数至少为 1'),
+  registrationDeadline: z.string({ required_error: '请选择报名截止时间' }).min(1, '请选择报名截止时间'),
   startTime: z.string({ required_error: '请选择开始时间' }).min(1, '请选择开始时间'),
   endTime: z.string().optional(),
   status: z.enum(['published', 'cancelled', 'completed']).default('published'),
@@ -44,7 +44,7 @@ const form = useForm({
     ? {
         title: activity.value.title,
         description: activity.value.description || '',
-        maxParticipants: activity.value.maxParticipants,
+        registrationDeadline: activity.value.registrationDeadline ? dayjs(activity.value.registrationDeadline).format('YYYY-MM-DDTHH:mm') : '',
         startTime: dayjs(activity.value.startTime).format('YYYY-MM-DDTHH:mm'),
         endTime: activity.value.endTime ? dayjs(activity.value.endTime).format('YYYY-MM-DDTHH:mm') : '',
         status: activity.value.status as 'published' | 'cancelled' | 'completed',
@@ -52,28 +52,89 @@ const form = useForm({
     : undefined,
 })
 
+const quickDeadlineMinutes = ref('15')
+const quickDeadlineOptions = [
+  { label: '活动开始前 15 分钟', value: '15' },
+  { label: '活动开始前 30 分钟', value: '30' },
+  { label: '活动开始前 1 小时', value: '60' },
+  { label: '活动开始前 2 小时', value: '120' },
+  { label: '活动开始前 3 小时', value: '180' },
+]
+
+const hasInitializedQuickDeadline = ref(false)
+
+function applyQuickDeadline(minutes: string) {
+  if (!form.values.startTime)
+    return
+
+  const start = dayjs(form.values.startTime)
+  if (!start.isValid())
+    return
+
+  form.setFieldValue('registrationDeadline', start.subtract(Number(minutes), 'minute').toISOString())
+}
+
+watch(() => activity.value, (currentActivity) => {
+  if (!currentActivity?.startTime || !currentActivity?.registrationDeadline)
+    return
+
+  const diffMinutes = dayjs(currentActivity.startTime).diff(dayjs(currentActivity.registrationDeadline), 'minute')
+  const matched = quickDeadlineOptions.find(item => Number(item.value) === diffMinutes)
+  quickDeadlineMinutes.value = matched?.value || '15'
+  hasInitializedQuickDeadline.value = true
+}, { immediate: true })
+
+watch(quickDeadlineMinutes, (minutes) => {
+  if (!hasInitializedQuickDeadline.value)
+    return
+  applyQuickDeadline(minutes)
+})
+
+watch(() => form.values.startTime, (startTime, oldStartTime) => {
+  if (!startTime || !hasInitializedQuickDeadline.value || !oldStartTime)
+    return
+  applyQuickDeadline(quickDeadlineMinutes.value)
+})
+
 const isSubmitting = ref(false)
+const isAdvancing = ref(false)
+const canAdvanceToBooking = computed(() => {
+  if (!activity.value)
+    return false
+  if (form.values.status !== 'published')
+    return false
+  if (!form.values.registrationDeadline)
+    return false
+  const deadline = dayjs(form.values.registrationDeadline)
+  return deadline.isValid() && dayjs().isBefore(deadline)
+})
+
+async function handleAdvanceToBooking() {
+  if (isAdvancing.value || !canAdvanceToBooking.value)
+    return
+
+  isAdvancing.value = true
+  try {
+    await $fetch('/api/activities/admin/advance-phase', {
+      method: 'POST',
+      body: {
+        id: Number.parseInt(activityId),
+      },
+    })
+    toast.success('已切换到抢座阶段')
+    router.push(`/activities/${activityId}`)
+  }
+  catch (error: any) {
+    toast.error(error.data?.message || error.statusMessage || error.message || '切换阶段失败')
+  }
+  finally {
+    isAdvancing.value = false
+  }
+}
 
 const onSubmit = form.handleSubmit(async (values) => {
   if (isSubmitting.value)
     return
-
-  // Check for seat reduction and occupied seats
-  if (activity.value && values.maxParticipants < activity.value.maxParticipants) {
-    const seats = data.value?.seats || []
-    const occupiedSeatsToRemove = seats.filter(s =>
-      s.seatNumber > values.maxParticipants && s.isOccupied,
-    )
-
-    if (occupiedSeatsToRemove.length > 0) {
-      // eslint-disable-next-line no-alert
-      const confirmed = window.confirm(
-        `减少位次将移除 ${occupiedSeatsToRemove.length} 个已被占用的位次 (位次号: ${occupiedSeatsToRemove.map(s => s.seatNumber).join(', ')}). \n确定要继续吗?`,
-      )
-      if (!confirmed)
-        return
-    }
-  }
 
   isSubmitting.value = true
 
@@ -85,6 +146,7 @@ const onSubmit = form.handleSubmit(async (values) => {
         ...values,
         startTime: new Date(values.startTime),
         endTime: values.endTime ? new Date(values.endTime) : undefined,
+        registrationDeadline: new Date(values.registrationDeadline),
       },
     })
     toast.success('更新成功')
@@ -100,14 +162,14 @@ const onSubmit = form.handleSubmit(async (values) => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#1c1c1e] text-white pb-20 relative">
+  <div class="min-h-screen bg-[#1c1c1e] text-white pb-12 relative">
     <div v-if="activity">
       <!-- Background Blobs -->
       <div class="fixed -right-20 -top-20 h-64 w-64 rounded-full bg-white/5 blur-3xl pointer-events-none" />
       <div class="fixed -left-20 -bottom-20 h-64 w-64 rounded-full bg-primary/5 blur-3xl pointer-events-none" />
 
       <!-- Header -->
-      <div class="sticky top-0 z-50 bg-[#1c1c1e] backdrop-blur-xl px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden mb-4">
+      <div class="sticky top-0 z-50 bg-[#1c1c1e] backdrop-blur-xl px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden">
         <!-- Header Background Decoration -->
         <div class="absolute -right-4 -top-10 h-24 w-24 rounded-full bg-white/5 blur-2xl pointer-events-none" />
         <div class="absolute -left-4 -top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
@@ -125,8 +187,8 @@ const onSubmit = form.handleSubmit(async (values) => {
           <!-- Title -->
           <FormField v-slot="{ componentField }" name="title">
             <FormItem>
-              <FormLabel class="text-white/80 pl-1">
-                活动标题
+              <FormLabel class="text-white font-semibold pl-1">
+                活动标题 <span class="text-red-400">*</span>
               </FormLabel>
               <FormControl>
                 <Input type="text" placeholder="例如：周五羽毛球局" v-bind="componentField" class="bg-white/5 border-transparent text-white placeholder:text-white/20 focus-visible:ring-white/20 rounded-xl h-12" />
@@ -152,8 +214,8 @@ const onSubmit = form.handleSubmit(async (values) => {
             <!-- Start Time -->
             <FormField v-slot="{ componentField }" name="startTime">
               <FormItem>
-                <FormLabel class="text-white/80 pl-1">
-                  开始时间
+                <FormLabel class="text-white font-semibold pl-1">
+                  开始时间 <span class="text-red-400">*</span>
                 </FormLabel>
                 <FormControl>
                   <DateTimePicker v-bind="componentField" placeholder="选择开始时间" class="bg-white/5 border-transparent text-white placeholder:text-white/20 rounded-xl h-12" />
@@ -176,21 +238,61 @@ const onSubmit = form.handleSubmit(async (values) => {
             </FormField>
           </div>
 
-          <!-- Max Participants -->
-          <FormField v-slot="{ componentField }" name="maxParticipants">
+          <!-- Registration Deadline -->
+          <FormField v-slot="{ componentField }" name="registrationDeadline">
             <FormItem>
-              <FormLabel class="text-white/80 pl-1">
-                最大人数 (位次数)
+              <FormLabel class="text-white font-semibold pl-1">
+                报名截止时间 <span class="text-red-400">*</span>
               </FormLabel>
               <FormControl>
-                <Input type="number" min="1" v-bind="componentField" class="bg-white/5 border-transparent text-white placeholder:text-white/20 focus-visible:ring-white/20 rounded-xl h-12" />
+                <DateTimePicker v-bind="componentField" placeholder="选择报名截止时间" class="bg-white/5 border-transparent text-white placeholder:text-white/20 rounded-xl h-12" />
               </FormControl>
               <FormDescription class="text-white/40 pl-1">
-                减少位次可能会移除已有占位，请谨慎操作
+                截止后自动进入抢座阶段，座位数=报名人数
               </FormDescription>
               <FormMessage class="pl-1" />
             </FormItem>
           </FormField>
+
+          <div class="space-y-2">
+            <div class="text-white/70 text-sm pl-1">
+              报名截止快捷选择
+            </div>
+            <Select v-model="quickDeadlineMinutes" :disabled="!form.values.startTime">
+              <SelectTrigger class="w-full bg-white/5 border-transparent text-white focus:ring-white/20 rounded-xl h-12 disabled:opacity-50">
+                <SelectValue placeholder="请选择活动开始前时间" />
+              </SelectTrigger>
+              <SelectContent class="bg-[#1c1c1e] border-white/10 text-white">
+                <SelectItem
+                  v-for="item in quickDeadlineOptions"
+                  :key="item.value"
+                  :value="item.value"
+                  class="focus:bg-white/10 focus:text-white"
+                >
+                  {{ item.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p class="text-white/40 text-xs pl-1">
+              选择后会自动将报名截止时间设置为“活动开始前 N 分钟”
+            </p>
+          </div>
+
+          <div class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-3">
+            <div class="text-sm text-amber-200 font-medium">
+              阶段控制
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              class="w-full border-amber-400/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50"
+              :disabled="isAdvancing || !canAdvanceToBooking"
+              @click="handleAdvanceToBooking"
+            >
+              <Loader2 v-if="isAdvancing" class="w-4 h-4 mr-2 animate-spin" />
+              {{ isAdvancing ? '切换中...' : '立即进入抢座阶段' }}
+            </Button>
+          </div>
 
           <!-- Status -->
           <FormField v-slot="{ componentField }" name="status">
@@ -222,7 +324,7 @@ const onSubmit = form.handleSubmit(async (values) => {
 
           <!-- Submit -->
           <div class="pt-4">
-            <Button type="submit" class="w-full h-12 text-base font-medium rounded-xl bg-white text-black hover:bg-gray-200 border-none shadow-lg shadow-white/5 active:scale-[0.98] transition-all" :disabled="isSubmitting">
+            <Button type="submit" class="w-full h-12 text-base font-medium rounded-xl bg-white text-black hover:bg-gray-200 border-none shadow-lg shadow-white/5 active:scale-[0.98] transition-all" :disabled="isSubmitting || isAdvancing">
               <Loader2 v-if="isSubmitting" class="w-5 h-5 mr-2 animate-spin" />
               {{ isSubmitting ? '保存中...' : '保存修改' }}
             </Button>

@@ -17,18 +17,35 @@ export const activities = sqliteTable('activities', {
   description: text('description'),
   startTime: integer('start_time', { mode: 'timestamp' }).notNull(),
   endTime: integer('end_time', { mode: 'timestamp' }),
-  maxParticipants: integer('max_participants').notNull(), // 最大座位数
+  registrationDeadline: integer('registration_deadline', { mode: 'timestamp' }), // 报名截止时间
+  maxParticipants: integer('max_participants'), // 最大座位数，截止后从报名数推导
   creatorId: integer('creator_id').references(() => users.id),
   status: text('status').default('published'),
   createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
 })
 
+// 报名表：用户在活动中的报名信息
+export const registrations = sqliteTable('registrations', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  activityId: integer('activity_id').references(() => activities.id).notNull(),
+  userId: integer('user_id').references(() => users.id).notNull(),
+  song: text('song'), // 歌曲
+  captain: text('captain'), // 队长
+  members: text('members'), // 成员（纯文本）
+  createdAt: integer('created_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).$defaultFn(() => new Date()),
+}, t => ({
+  // 每用户每活动仅一条报名
+  uniqueActivityUser: unique().on(t.activityId, t.userId),
+}))
+
 export const activitySeats = sqliteTable('activity_seats', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   activityId: integer('activity_id').references(() => activities.id).notNull(),
   seatNumber: integer('seat_number').notNull(), // 座位号 (1, 2, 3...)
   userId: integer('user_id').references(() => users.id), // 占用该座位的用户，为空则表示未被抢占
+  registrationId: integer('registration_id').references(() => registrations.id), // 关联的报名记录
   remark: text('remark'), // 用户备注信息
   occupiedAt: integer('occupied_at', { mode: 'timestamp' }), // 抢占时间
 }, t => ({

@@ -73,7 +73,7 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-50/50 pb-20">
+  <div class="min-h-screen bg-gray-50/50 pb-12">
     <!-- Header -->
     <div class="sticky top-0 z-50 bg-[#1c1c1e] backdrop-blur-xl text-white px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden mb-4">
       <!-- Header Background Decoration -->

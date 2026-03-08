@@ -19,7 +19,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const validation = releaseSeatSchema.safeParse(body)
   if (!validation.success) {
-    throw createError({ statusCode: 400, message: validation.error.issues[0].message })
+    const firstError = validation.error.issues[0]
+    throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
   const { activityId, seatNumber } = validation.data
 
@@ -28,6 +29,7 @@ export default defineEventHandler(async (event) => {
     .set({
       userId: null,
       remark: null,
+      registrationId: null,
       occupiedAt: null,
     })
     .where(and(

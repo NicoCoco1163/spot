@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { DateValue } from '@internationalized/date'
 import { fromDate, getLocalTimeZone, toCalendarDate, today } from '@internationalized/date'
-import { Calendar as CalendarIcon } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
@@ -86,13 +85,12 @@ const minutes = Array.from({ length: 60 }, (_, i) => i)
 <template>
   <div>
     <div
-      class="flex items-center justify-between border rounded-md px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 transition-colors bg-white"
+      class="flex items-center border rounded-md px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 transition-colors bg-white"
       @click="open"
     >
-      <span :class="displayValue ? 'text-foreground' : 'text-muted-foreground'">
+      <span class="font-mono tabular-nums" :class="displayValue ? 'text-foreground' : 'text-muted-foreground'">
         {{ displayValue || placeholder || '选择时间' }}
       </span>
-      <CalendarIcon class="w-4 h-4 opacity-50" />
     </div>
 
     <Drawer v-model:open="show">
@@ -113,10 +111,11 @@ const minutes = Array.from({ length: 60 }, (_, i) => i)
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="date" class="mt-2">
-                <div class="flex justify-center h-[320px] items-start">
+              <TabsContent value="date">
+                <div class="date-panel flex h-[320px] items-stretch justify-center border rounded-md overflow-hidden" data-vaul-no-drag>
                   <Calendar
                     v-model="tempDate"
+                    class="date-calendar h-full w-full"
                     layout="month-and-year"
                     :min-value="props.minDate ? toCalendarDate(fromDate(props.minDate, getLocalTimeZone())) : undefined"
                     :max-value="props.maxDate ? toCalendarDate(fromDate(props.maxDate, getLocalTimeZone())) : undefined"
@@ -124,17 +123,17 @@ const minutes = Array.from({ length: 60 }, (_, i) => i)
                 </div>
               </TabsContent>
 
-              <TabsContent value="time" class="mt-2">
+              <TabsContent value="time">
                 <div class="flex h-[320px] border rounded-md overflow-hidden" data-vaul-no-drag>
                   <!-- Hours -->
                   <div class="flex-1 overflow-y-auto border-r scrollbar-hide text-center bg-white relative" data-vaul-no-drag>
-                    <div class="sticky top-0 bg-gray-100 p-2 text-xs font-medium text-gray-500 z-10 border-b">
+                    <div class="sticky top-0 bg-gray-100 p-2 text-xs font-medium text-gray-500 z-10 border-b font-mono">
                       时
                     </div>
                     <div
                       v-for="h in hours"
                       :key="h"
-                      class="py-3 px-6 cursor-pointer transition-colors"
+                      class="py-3 px-6 cursor-pointer transition-colors font-mono tabular-nums"
                       :class="tempTime.hour === h ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-gray-50'"
                       @click="tempTime.hour = h"
                     >
@@ -144,13 +143,13 @@ const minutes = Array.from({ length: 60 }, (_, i) => i)
 
                   <!-- Minutes -->
                   <div class="flex-1 overflow-y-auto scrollbar-hide text-center bg-white relative" data-vaul-no-drag>
-                    <div class="sticky top-0 bg-gray-100 p-2 text-xs font-medium text-gray-500 z-10 border-b">
+                    <div class="sticky top-0 bg-gray-100 p-2 text-xs font-medium text-gray-500 z-10 border-b font-mono">
                       分
                     </div>
                     <div
                       v-for="m in minutes"
                       :key="m"
-                      class="py-3 px-6 cursor-pointer transition-colors"
+                      class="py-3 px-6 cursor-pointer transition-colors font-mono tabular-nums"
                       :class="tempTime.minute === m ? 'bg-primary text-primary-foreground font-medium' : 'hover:bg-gray-50'"
                       @click="tempTime.minute = m"
                     >
@@ -162,7 +161,7 @@ const minutes = Array.from({ length: 60 }, (_, i) => i)
             </Tabs>
           </div>
 
-          <DrawerFooter class="pt-6">
+          <DrawerFooter>
             <Button @click="onConfirm">
               确认
             </Button>
@@ -177,3 +176,34 @@ const minutes = Array.from({ length: 60 }, (_, i) => i)
     </Drawer>
   </div>
 </template>
+
+<style scoped>
+.date-panel :deep([data-slot='calendar']) {
+  display: flex;
+  height: 100%;
+  width: 100%;
+  flex-direction: column;
+  padding: 0.75rem 0.75rem 0.5rem;
+}
+
+.date-panel :deep([data-slot='calendar-grid']) {
+  width: 100%;
+}
+
+.date-panel :deep([data-slot='calendar-grid-row']) {
+  width: 100%;
+}
+
+.date-panel :deep([data-slot='calendar-cell']) {
+  flex: 1;
+}
+
+.date-panel :deep([data-slot='calendar-cell']:has([data-selected])) {
+  background-color: transparent;
+}
+
+.date-panel :deep([data-slot='calendar-cell-trigger']) {
+  margin-left: auto;
+  margin-right: auto;
+}
+</style>

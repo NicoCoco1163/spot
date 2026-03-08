@@ -1,6 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
-import { activities, activitySeats } from '../../../database/schema'
+import { activities, activitySeats, registrations } from '../../../database/schema'
+import { canOccupySeat } from '../../../utils/activity-phase'
 import { db } from '../../../utils/db'
 
 const occupySeatSchema = z.object({
@@ -20,7 +21,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const validation = occupySeatSchema.safeParse(body)
   if (!validation.success) {
-    throw createError({ statusCode: 400, message: validation.error.issues[0].message })
+    const firstError = validation.error.issues[0]
+    throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
   const { activityId, seatNumber, remark } = validation.data
 
@@ -35,7 +37,25 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: '活动未开始或已结束' })
     }
 
-    // 3.2 检查用户是否已在该活动中占位 (可选规则：每人每活动限占一坑)
+    // 3.2 检查是否在抢座阶段
+    if (!canOccupySeat(activity)) {
+      throw createError({ statusCode: 400, message: '当前不在抢座阶段' })
+    }
+
+    // 3.3 检查用户是否已报名
+    const registration = tx.select()
+      .from(registrations)
+      .where(and(
+        eq(registrations.activityId, activityId),
+        eq(registrations.userId, user.id),
+      ))
+      .get()
+
+    if (!registration) {
+      throw createError({ statusCode: 400, message: '您尚未报名该活动，无法抢座' })
+    }
+
+    // 3.4 检查用户是否已在该活动中占位
     const existingSeat = tx.select()
       .from(activitySeats)
       .where(and(eq(activitySeats.activityId, activityId), eq(activitySeats.userId, user.id)))
@@ -45,11 +65,12 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: `您已占用了 ${existingSeat.seatNumber} 号座位，请先释放` })
     }
 
-    // 3.3 尝试抢占
+    // 3.5 尝试抢占
     // 使用 update ... where userId is null 来实现乐观锁效果
     const updatedSeat = tx.update(activitySeats)
       .set({
         userId: user.id,
+        registrationId: registration.id,
         remark: remark || null,
         occupiedAt: new Date(),
       })
