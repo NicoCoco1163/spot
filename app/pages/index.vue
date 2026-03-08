@@ -201,7 +201,7 @@ async function onTouchEnd() {
       <div class="absolute -right-4 -top-10 h-24 w-24 rounded-full bg-white/5 blur-2xl pointer-events-none" />
       <div class="absolute -left-4 -top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
 
-      <div class="font-bold text-xl tracking-wide relative z-10 flex items-center gap-2">
+      <div class="font-bold text-lg tracking-wide relative z-10 flex items-center gap-2">
         <span class="bg-clip-text text-transparent bg-linear-to-r from-white to-white/60">随机舞蹈</span>
       </div>
       <div class="flex items-center gap-3 relative z-10">

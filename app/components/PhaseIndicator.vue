@@ -115,26 +115,32 @@ watch(() => props.registrationDeadline, updateTimeRemaining)
 </script>
 
 <template>
-  <div v-if="compact" class="flex flex-wrap items-center gap-2">
-    <div class="flex items-center gap-2 text-sm text-muted-foreground">
+  <div v-if="compact" class="space-y-2">
+    <div class="min-w-0 flex items-center gap-2 text-sm text-muted-foreground">
       <AlarmClock class="w-4 h-4" :class="urgencyStyles.text" />
-      <span class="font-mono tabular-nums">截止：{{ formattedDeadline }}</span>
+      <span class="truncate font-mono tabular-nums">截止时间 {{ formattedDeadline }}</span>
     </div>
     <div
       v-if="!isExpired"
-      class="inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-xs font-semibold font-mono tabular-nums"
-      :class="[urgencyStyles.surface, urgencyStyles.text]"
+      class="grid w-full grid-cols-4 gap-2 px-0.5 py-1"
     >
-      <span>{{ timeData.days }}</span>
-      <span class="text-muted-foreground/80">天</span>
-      <span>:</span>
-      <span>{{ padZero(timeData.hours) }}</span>
-      <span>:</span>
-      <span>{{ padZero(timeData.minutes) }}</span>
-      <span>:</span>
-      <span>{{ padZero(timeData.seconds) }}</span>
+      <div v-for="item in countdownItems" :key="item.label" class="space-y-1.5 text-center">
+        <div class="relative overflow-hidden rounded-md bg-zinc-950 text-white">
+          <div class="absolute inset-x-0 top-0 h-1/2 bg-linear-to-b from-zinc-900 to-zinc-950" />
+          <div class="absolute inset-x-0 bottom-0 h-1/2 bg-linear-to-b from-zinc-900 to-zinc-950" />
+          <div class="absolute inset-x-0 top-1/2 h-px -translate-y-1/2 bg-black/60" />
+          <div class="relative flex h-[56px] items-center justify-center">
+            <span class="text-[38px] leading-none font-black tracking-[0.04em] tabular-nums">
+              {{ item.value }}
+            </span>
+          </div>
+        </div>
+        <div class="text-[10px] leading-none tracking-[0.18em] text-muted-foreground/80">
+          {{ item.label }}
+        </div>
+      </div>
     </div>
-    <span v-else class="text-sm font-medium text-red-600">已截止</span>
+    <span v-else class="block text-sm font-medium text-red-600">已截止</span>
   </div>
 
   <div v-else-if="phase === 'registration' && formattedDeadline" class="rounded-xl border bg-card p-4 text-card-foreground shadow-xs">

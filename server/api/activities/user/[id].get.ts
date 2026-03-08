@@ -1,4 +1,4 @@
-import { and, asc, eq, count } from 'drizzle-orm'
+import { and, asc, count, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { activities, activitySeats, registrations, users } from '../../../database/schema'
 import { getActivityPhase } from '../../../utils/activity-phase'
@@ -67,9 +67,16 @@ export default defineEventHandler(async (event) => {
       nickname: users.nickname,
       mobile: users.mobile, // 可根据隐私需求决定是否返回手机号
     },
+    registration: {
+      song: registrations.song,
+      captain: registrations.captain,
+      members: registrations.members,
+      createdAt: registrations.createdAt,
+    },
   })
     .from(activitySeats)
     .leftJoin(users, eq(activitySeats.userId, users.id))
+    .leftJoin(registrations, eq(activitySeats.registrationId, registrations.id))
     .where(eq(activitySeats.activityId, activityId))
     .orderBy(asc(activitySeats.seatNumber))
     .all()
@@ -79,6 +86,7 @@ export default defineEventHandler(async (event) => {
     ...seat,
     isOccupied: !!seat.isOccupied, // 转为 boolean
     user: seat.isOccupied ? seat.user : null,
+    registration: seat.isOccupied ? seat.registration : null,
   }))
 
   // 8. 获取当前用户的报名信息

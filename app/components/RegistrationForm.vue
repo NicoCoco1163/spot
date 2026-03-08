@@ -102,7 +102,7 @@ const onSubmit = form.handleSubmit(async (values) => {
           成员
         </FormLabel>
         <FormControl>
-          <Textarea placeholder="请输入成员名单（多人用逗号分隔）" class="resize-none p-4" rows="3" v-bind="componentField" />
+          <Textarea placeholder="请输入成员名单（多人用逗号分隔）" class="resize-none p-3" rows="3" v-bind="componentField" />
         </FormControl>
         <FormDescription>
           多人请用逗号或换行分隔

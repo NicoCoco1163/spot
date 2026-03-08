@@ -13,8 +13,14 @@ export default defineNuxtConfig({
   ],
   runtimeConfig: {
     wechatSecret: '', // NUXT_WECHAT_SECRET
+    altchaHmacKey: '', // NUXT_ALTCHA_HMAC_KEY
     public: {
       wechatAppId: '', // NUXT_PUBLIC_WECHAT_APP_ID
+    },
+  },
+  vue: {
+    compilerOptions: {
+      isCustomElement: tag => tag === 'altcha-widget',
     },
   },
   app: {

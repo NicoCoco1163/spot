@@ -98,6 +98,7 @@ watch(() => form.values.startTime, (startTime, oldStartTime) => {
 
 const isSubmitting = ref(false)
 const isAdvancing = ref(false)
+const showAdvanceConfirm = ref(false)
 const canAdvanceToBooking = computed(() => {
   if (!activity.value)
     return false
@@ -122,6 +123,7 @@ async function handleAdvanceToBooking() {
       },
     })
     toast.success('已切换到抢座阶段')
+    showAdvanceConfirm.value = false
     router.push(`/activities/${activityId}`)
   }
   catch (error: any) {
@@ -130,6 +132,12 @@ async function handleAdvanceToBooking() {
   finally {
     isAdvancing.value = false
   }
+}
+
+function openAdvanceConfirm() {
+  if (!canAdvanceToBooking.value || isAdvancing.value)
+    return
+  showAdvanceConfirm.value = true
 }
 
 const onSubmit = form.handleSubmit(async (values) => {
@@ -204,7 +212,7 @@ const onSubmit = form.handleSubmit(async (values) => {
                 活动描述
               </FormLabel>
               <FormControl>
-                <Textarea placeholder="介绍一下活动规则..." class="resize-none bg-white/5 border-transparent text-white placeholder:text-white/20 focus-visible:ring-white/20 rounded-xl p-4" rows="4" v-bind="componentField" />
+                <Textarea placeholder="介绍一下活动规则..." class="resize-none bg-white/5 border-transparent text-white placeholder:text-white/20 focus-visible:ring-white/20 rounded-xl p-3" rows="4" v-bind="componentField" />
               </FormControl>
               <FormMessage class="pl-1" />
             </FormItem>
@@ -278,49 +286,49 @@ const onSubmit = form.handleSubmit(async (values) => {
             </p>
           </div>
 
-          <div class="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-3">
-            <div class="text-sm text-amber-200 font-medium">
-              阶段控制
+          <!-- Status -->
+          <div class="flex items-end gap-3">
+            <div class="flex-1">
+              <FormField v-slot="{ componentField }" name="status">
+                <FormItem>
+                  <FormLabel class="text-white/80 pl-1">
+                    状态
+                  </FormLabel>
+                  <Select v-bind="componentField">
+                    <FormControl>
+                      <SelectTrigger class="bg-white/5 border-transparent text-white focus:ring-white/20 rounded-xl h-12">
+                        <SelectValue placeholder="选择状态" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent class="bg-[#1c1c1e] border-white/10 text-white">
+                      <SelectItem value="published" class="focus:bg-white/10 focus:text-white">
+                        发布中
+                      </SelectItem>
+                      <SelectItem value="cancelled" class="focus:bg-white/10 focus:text-white">
+                        已取消
+                      </SelectItem>
+                      <SelectItem value="completed" class="focus:bg-white/10 focus:text-white">
+                        已结束
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage class="pl-1" />
+                </FormItem>
+              </FormField>
             </div>
             <Button
+              v-if="canAdvanceToBooking"
               type="button"
+              size="sm"
               variant="outline"
-              class="w-full border-amber-400/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50"
-              :disabled="isAdvancing || !canAdvanceToBooking"
-              @click="handleAdvanceToBooking"
+              class="mb-0.5 shrink-0 border-amber-400/30 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20 hover:text-amber-50"
+              :disabled="isAdvancing"
+              @click="openAdvanceConfirm"
             >
               <Loader2 v-if="isAdvancing" class="w-4 h-4 mr-2 animate-spin" />
-              {{ isAdvancing ? '切换中...' : '立即进入抢座阶段' }}
+              {{ isAdvancing ? '切换中...' : '进入抢座阶段' }}
             </Button>
           </div>
-
-          <!-- Status -->
-          <FormField v-slot="{ componentField }" name="status">
-            <FormItem>
-              <FormLabel class="text-white/80 pl-1">
-                状态
-              </FormLabel>
-              <Select v-bind="componentField">
-                <FormControl>
-                  <SelectTrigger class="bg-white/5 border-transparent text-white focus:ring-white/20 rounded-xl h-12">
-                    <SelectValue placeholder="选择状态" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent class="bg-[#1c1c1e] border-white/10 text-white">
-                  <SelectItem value="published" class="focus:bg-white/10 focus:text-white">
-                    发布中
-                  </SelectItem>
-                  <SelectItem value="cancelled" class="focus:bg-white/10 focus:text-white">
-                    已取消
-                  </SelectItem>
-                  <SelectItem value="completed" class="focus:bg-white/10 focus:text-white">
-                    已结束
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              <FormMessage class="pl-1" />
-            </FormItem>
-          </FormField>
 
           <!-- Submit -->
           <div class="pt-4">
@@ -336,5 +344,25 @@ const onSubmit = form.handleSubmit(async (values) => {
     <div v-else class="text-center py-10">
       <Loader2 class="w-8 h-8 animate-spin mx-auto text-gray-400" />
     </div>
+
+    <Dialog v-model:open="showAdvanceConfirm">
+      <DialogContent class="max-w-[90%] rounded-2xl top-[20%] translate-y-0 sm:top-[50%] sm:-translate-y-1/2">
+        <DialogHeader>
+          <DialogTitle>确认进入抢座阶段</DialogTitle>
+          <DialogDescription>
+            进入后将结束报名并开放抢座，此操作不可撤回。
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="flex-row gap-3 justify-end mt-4">
+          <Button size="sm" variant="outline" @click="showAdvanceConfirm = false">
+            取消
+          </Button>
+          <Button size="sm" variant="destructive" :disabled="isAdvancing" @click="handleAdvanceToBooking">
+            <Loader2 v-if="isAdvancing" class="w-4 h-4 mr-2 animate-spin" />
+            {{ isAdvancing ? '切换中...' : '确认进入' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>

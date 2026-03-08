@@ -88,7 +88,7 @@ async function handleLogout() {
       >
         <ChevronLeft class="w-6 h-6" />
       </Button>
-      <span class="font-bold text-xl tracking-wide relative z-10">个人中心</span>
+      <span class="font-bold text-lg tracking-wide relative z-10">个人中心</span>
       <div class="w-8" />
     </div>
 

@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { activities, registrations } from '../../../database/schema'
-import { canRegister } from '../../../utils/activity-phase'
+import { getActivityPhase } from '../../../utils/activity-phase'
 import { db } from '../../../utils/db'
 
 const registerSchema = z.object({
@@ -33,12 +33,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 404, message: '活动不存在' })
   }
 
-  // 4. 检查是否在报名阶段
-  if (!canRegister(activity)) {
-    throw createError({ statusCode: 400, message: '当前不在报名阶段' })
+  if (activity.status === 'cancelled' || activity.status === 'completed') {
+    throw createError({ statusCode: 400, message: '活动未开始或已结束' })
   }
 
-  // 5. Upsert 报名信息
+  const phase = getActivityPhase(activity)
+
+  // 4. 查询用户当前报名记录
   const existingRegistration = db.select()
     .from(registrations)
     .where(and(
@@ -47,9 +48,13 @@ export default defineEventHandler(async (event) => {
     ))
     .get()
 
+  if (phase === 'booking' && !existingRegistration) {
+    throw createError({ statusCode: 400, message: '报名已截止，仅支持修改已报名信息' })
+  }
+
+  // 5. Upsert / Update 报名信息
   let registration
   if (existingRegistration) {
-    // 更新已有报名
     registration = db.update(registrations)
       .set({
         song,
@@ -62,7 +67,6 @@ export default defineEventHandler(async (event) => {
       .get()
   }
   else {
-    // 创建新报名
     registration = db.insert(registrations)
       .values({
         activityId,

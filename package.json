@@ -5,16 +5,19 @@
   "packageManager": "pnpm@9.15.3+sha512.1f79bc245a66eb0b07c5d4d83131240774642caaa86ef7d0434ab47c0d16f66b04e21e0c086eb61e62c77efc4d7f7ec071afad3796af64892fae66509173893a",
   "scripts": {
     "build": "nuxt build",
+    "build:linux": "bash ./scripts/build-linux-output.sh",
     "dev": "nuxt dev",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "clean:activities": "tsx scripts/clean-activities.ts"
+    "clean:activities": "tsx scripts/clean-activities.ts",
+    "clean:linux:build-cache": "docker volume rm spot-pnpm-store 2>/dev/null || true"
   },
   "dependencies": {
     "@internationalized/date": "^3.10.1",
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^14.1.0",
+    "altcha": "^2.3.0",
     "argon2": "^0.44.0",
     "better-sqlite3": "^12.5.0",
     "class-variance-authority": "^0.7.1",
