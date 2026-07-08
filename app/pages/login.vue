@@ -138,7 +138,7 @@ const onSubmit = form.handleSubmit(async (values) => {
           欢迎回来
         </h1>
         <p class="text-gray-500 text-sm">
-          登录您的账号
+          管理员登录
         </p>
       </div>
 
@@ -194,10 +194,7 @@ const onSubmit = form.handleSubmit(async (values) => {
       </form>
 
       <div class="text-center text-sm text-gray-500">
-        还没有账号？
-        <NuxtLink to="/register" class="text-primary font-medium hover:underline">
-          去注册
-        </NuxtLink>
+        参与活动无需登录，返回首页选择活动后用手机号报名。
       </div>
 
       <!-- <div class="mt-8 py-4 border-t text-xs text-gray-400 break-all space-y-2">

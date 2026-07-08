@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronLeft, Loader2, Save } from 'lucide-vue-next'
+import { ChevronLeft, Loader2, Save } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { useAuthStore } from '~/stores/auth'
 

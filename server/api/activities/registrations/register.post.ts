@@ -1,83 +1,106 @@
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { activities, registrations } from '../../../database/schema'
+import { activities, registrationDevices, registrations } from '../../../database/schema'
+import { activityCodeSchema } from '../../../utils/activity-code'
 import { getActivityPhase } from '../../../utils/activity-phase'
 import { db } from '../../../utils/db'
+import { mainlandMobilePattern, normalizeMobile } from '../../../utils/mobile'
 
 const registerSchema = z.object({
-  activityId: z.number().int(),
-  song: z.string().trim().min(1, '请输入表演歌曲').max(100, '歌曲名称最多 100 字'),
-  captain: z.string().trim().min(1, '请输入队长姓名').max(50, '队长姓名最多 50 字'),
-  members: z.string().max(500).optional(),
+  activityCode: z.string().regex(activityCodeSchema, '活动不存在'),
+  mobile: z.string().transform(normalizeMobile).pipe(z.string().regex(mainlandMobilePattern, '请输入有效的中国大陆手机号')),
+  deviceKey: z.string().trim().min(16, '浏览器设备标识无效').max(128, '浏览器设备标识无效'),
+  teamName: z.string({ required_error: '请输入队伍名称' }).trim().min(1, '请输入队伍名称').max(100, '队伍名称最多 100 字'),
+  songName: z.string().trim().max(100, '歌曲名称最多 100 字').optional(),
+  songDuration: z.coerce.number().int().positive('歌曲时长必须大于 0').max(36000, '歌曲时长过长').nullable().optional(),
+  members: z.string().trim().max(500, '队员名称最多 500 字').optional(),
 })
 
 export default defineEventHandler(async (event) => {
-  // 1. 鉴权
-  const user = event.context.user
-  if (!user) {
-    throw createError({ statusCode: 401, message: '请先登录' })
-  }
-
-  // 2. 校验参数
+  // 1. 校验参数
   const body = await readBody(event)
   const validation = registerSchema.safeParse(body)
   if (!validation.success) {
     const firstError = validation.error.issues[0]
     throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
-  const { activityId, song, captain, members } = validation.data
+  const { activityCode, mobile, deviceKey, teamName, songName, songDuration, members } = validation.data
 
-  // 3. 检查活动状态
-  const activity = db.select().from(activities).where(eq(activities.id, activityId)).get()
-  if (!activity) {
-    throw createError({ statusCode: 404, message: '活动不存在' })
-  }
+  const registration = db.transaction((tx) => {
+    // 2. 检查活动状态
+    const activity = tx.select().from(activities).where(eq(activities.code, activityCode)).get()
+    if (!activity) {
+      throw createError({ statusCode: 404, message: '活动不存在' })
+    }
+    const activityId = activity.id
 
-  if (activity.status === 'cancelled' || activity.status === 'completed') {
-    throw createError({ statusCode: 400, message: '活动未开始或已结束' })
-  }
+    if (activity.status !== 'published') {
+      throw createError({ statusCode: 400, message: '活动未发布或已结束' })
+    }
 
-  const phase = getActivityPhase(activity)
+    const phase = getActivityPhase(activity)
 
-  // 4. 查询用户当前报名记录
-  const existingRegistration = db.select()
-    .from(registrations)
-    .where(and(
-      eq(registrations.activityId, activityId),
-      eq(registrations.userId, user.id),
-    ))
-    .get()
-
-  if (phase === 'booking' && !existingRegistration) {
-    throw createError({ statusCode: 400, message: '报名已截止，仅支持修改已报名信息' })
-  }
-
-  // 5. Upsert / Update 报名信息
-  let registration
-  if (existingRegistration) {
-    registration = db.update(registrations)
-      .set({
-        song,
-        captain,
-        members,
-        updatedAt: new Date(),
-      })
-      .where(eq(registrations.id, existingRegistration.id))
-      .returning()
+    // 3. 查询手机号和浏览器设备当前绑定
+    const existingRegistration = tx.select()
+      .from(registrations)
+      .where(and(
+        eq(registrations.activityId, activityId),
+        eq(registrations.mobile, mobile),
+      ))
       .get()
-  }
-  else {
-    registration = db.insert(registrations)
-      .values({
-        activityId,
-        userId: user.id,
-        song,
-        captain,
-        members,
-      })
-      .returning()
+
+    const existingDevice = tx.select()
+      .from(registrationDevices)
+      .where(and(
+        eq(registrationDevices.activityId, activityId),
+        eq(registrationDevices.deviceKey, deviceKey),
+      ))
       .get()
-  }
+
+    if (existingDevice && (!existingRegistration || existingDevice.registrationId !== existingRegistration.id)) {
+      throw createError({ statusCode: 409, message: '当前浏览器已完成报名，请使用原手机号修改报名信息' })
+    }
+
+    if (phase === 'booking' && !existingRegistration) {
+      throw createError({ statusCode: 400, message: '报名已截止，仅支持修改已报名信息' })
+    }
+
+    // 4. Upsert / Update 报名信息
+    const updateValues = {
+      teamName: teamName || null,
+      songName: songName || null,
+      songDuration: songDuration ?? null,
+      members: members || null,
+      updatedAt: new Date(),
+    }
+
+    const nextRegistration = existingRegistration
+      ? tx.update(registrations)
+          .set(updateValues)
+          .where(eq(registrations.id, existingRegistration.id))
+          .returning()
+          .get()
+      : tx.insert(registrations)
+          .values({
+            activityId,
+            mobile,
+            ...updateValues,
+          })
+          .returning()
+          .get()
+
+    if (!existingDevice) {
+      tx.insert(registrationDevices)
+        .values({
+          activityId,
+          registrationId: nextRegistration.id,
+          deviceKey,
+        })
+        .run()
+    }
+
+    return nextRegistration
+  })
 
   return { registration }
 })

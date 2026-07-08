@@ -15,6 +15,34 @@
       "when": 1772244763672,
       "tag": "0001_mixed_black_cat",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783519456000,
+      "tag": "0002_mobile_identity_deadline",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783519867000,
+      "tag": "0003_activity_public_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783520648000,
+      "tag": "0004_registration_profile_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783530000000,
+      "tag": "0005_registration_device_key",
+      "breakpoints": true
     }
   ]
 }

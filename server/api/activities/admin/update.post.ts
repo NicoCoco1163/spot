@@ -4,12 +4,10 @@ import { activities } from '../../../database/schema'
 import { db } from '../../../utils/db'
 
 const updateActivitySchema = z.object({
-  id: z.number().int(),
+  code: z.string(),
   title: z.string().min(1, '标题不能为空'),
   description: z.string().optional(),
-  startTime: z.coerce.date(),
-  endTime: z.coerce.date().optional(),
-  registrationDeadline: z.coerce.date().optional(),
+  deadline: z.coerce.date(),
   status: z.enum(['published', 'cancelled', 'completed']).optional(),
 })
 
@@ -27,12 +25,12 @@ export default defineEventHandler(async (event) => {
     const firstError = validation.error.issues[0]
     throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
-  const { id, ...updateData } = validation.data
+  const { code, ...updateData } = validation.data
 
   // 3. 检查权限并获取当前数据
   const currentActivity = db.select()
     .from(activities)
-    .where(and(eq(activities.id, id), eq(activities.creatorId, user.id)))
+    .where(and(eq(activities.code, code), eq(activities.creatorId, user.id)))
     .get()
 
   if (!currentActivity) {
@@ -42,7 +40,7 @@ export default defineEventHandler(async (event) => {
   // 4. 更新活动
   const updatedActivity = db.update(activities)
     .set({ ...updateData, updatedAt: new Date() })
-    .where(eq(activities.id, id))
+    .where(eq(activities.id, currentActivity.id))
     .returning()
     .get()
 

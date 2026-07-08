@@ -1,47 +1,51 @@
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { activitySeats } from '../../../database/schema'
+import { activities, activitySeats } from '../../../database/schema'
+import { activityCodeSchema } from '../../../utils/activity-code'
 import { db } from '../../../utils/db'
+import { mainlandMobilePattern, normalizeMobile } from '../../../utils/mobile'
 
 const releaseSeatSchema = z.object({
-  activityId: z.number().int(),
+  activityCode: z.string().regex(activityCodeSchema, '活动不存在'),
   seatNumber: z.number().int(),
+  mobile: z.string().transform(normalizeMobile).pipe(z.string().regex(mainlandMobilePattern, '请输入有效的中国大陆手机号')),
 })
 
 export default defineEventHandler(async (event) => {
-  // 1. 鉴权
-  const user = event.context.user
-  if (!user) {
-    throw createError({ statusCode: 401, message: '请先登录' })
-  }
-
-  // 2. 校验参数
+  // 1. 校验参数
   const body = await readBody(event)
   const validation = releaseSeatSchema.safeParse(body)
   if (!validation.success) {
     const firstError = validation.error.issues[0]
     throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
-  const { activityId, seatNumber } = validation.data
+  const { activityCode, seatNumber, mobile } = validation.data
+  const activity = db.select({ id: activities.id })
+    .from(activities)
+    .where(eq(activities.code, activityCode))
+    .get()
+  if (!activity) {
+    throw createError({ statusCode: 404, message: '活动不存在' })
+  }
 
-  // 3. 释放座位
+  // 2. 释放位次
   const releasedSeat = db.update(activitySeats)
     .set({
-      userId: null,
+      mobile: null,
       remark: null,
       registrationId: null,
       occupiedAt: null,
     })
     .where(and(
-      eq(activitySeats.activityId, activityId),
+      eq(activitySeats.activityId, activity.id),
       eq(activitySeats.seatNumber, seatNumber),
-      eq(activitySeats.userId, user.id), // 关键：只能释放自己的座位
+      eq(activitySeats.mobile, mobile), // 关键：只能释放自己的位次
     ))
     .returning()
     .get()
 
   if (!releasedSeat) {
-    throw createError({ statusCode: 400, message: '释放失败：您未占用该座位或座位不存在' })
+    throw createError({ statusCode: 400, message: '释放失败：您未占用该位次或位次不存在' })
   }
 
   return { success: true }

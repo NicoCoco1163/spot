@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import { useInfiniteScroll } from '@vueuse/core'
-import { ArrowDown, Loader2, Plus, User } from 'lucide-vue-next'
-import { Motion } from 'motion-v'
+import { ChevronLeft, ChevronRight, Clock, LogOut, Plus, RefreshCcw, Search, X } from '@lucide/vue'
 import { useAuthStore } from '~/stores/auth'
 
 definePageMeta({
@@ -12,335 +10,326 @@ const authStore = useAuthStore()
 const router = useRouter()
 const dayjs = useDayjs()
 
-// State
 const page = ref(1)
 const limit = 10
-const activities = ref<any[]>([])
-const hasMore = ref(true)
-const isLoadingMore = ref(false)
-const isRefreshing = ref(false)
-const pullDistance = ref(0)
-const touchStartY = ref(0)
-const isPulling = ref(false)
+const status = ref('all')
+const phase = ref('all')
+const keywordInput = ref('')
+const keyword = ref('')
 
-// Initial Data
-const { data } = await useFetch('/api/activities/user', {
-  query: { page: 1, limit },
+let keywordTimer: ReturnType<typeof setTimeout> | null = null
+watch(keywordInput, (value) => {
+  if (keywordTimer)
+    clearTimeout(keywordTimer)
+  keywordTimer = setTimeout(() => {
+    keyword.value = value.trim()
+  }, 250)
 })
 
-// Hydrate state
-watch(data, (newVal) => {
-  if (newVal) {
-    activities.value = newVal.activities
-    hasMore.value = newVal.pagination.hasMore
-    page.value = newVal.pagination.page
-  }
-}, { immediate: true })
+onUnmounted(() => {
+  if (keywordTimer)
+    clearTimeout(keywordTimer)
+})
 
-function getActivityStatus(item: any) {
-  if (item.status === 'cancelled') {
-    return {
-      class: 'bg-zinc-800 text-zinc-500',
-      text: '已取消',
-    }
+const query = computed(() => ({
+  page: page.value,
+  limit,
+  status: status.value,
+  phase: phase.value,
+  keyword: keyword.value,
+}))
+
+const { data, pending, refresh } = await useFetch('/api/activities/admin', {
+  query,
+})
+
+const isManualRefreshing = ref(false)
+const isRefreshButtonBusy = computed(() => pending.value || isManualRefreshing.value)
+const activities = computed(() => authStore.user?.isAdmin ? data.value?.activities || [] : [])
+const pagination = computed(() => data.value?.pagination || {
+  page: 1,
+  limit,
+  total: 0,
+  totalPages: 1,
+  hasMore: false,
+})
+const visibleFrom = computed(() => pagination.value.total === 0 ? 0 : (pagination.value.page - 1) * pagination.value.limit + 1)
+const visibleTo = computed(() => Math.min(pagination.value.page * pagination.value.limit, pagination.value.total))
+const hasActiveFilters = computed(() => status.value !== 'all' || phase.value !== 'all' || keyword.value.length > 0 || keywordInput.value.trim().length > 0)
+
+const statusOptions = [
+  { value: 'all', label: '全部' },
+  { value: 'published', label: '已发布' },
+  { value: 'cancelled', label: '已取消' },
+  { value: 'completed', label: '已结束' },
+]
+
+const phaseOptions = [
+  { value: 'all', label: '全部阶段' },
+  { value: 'registration', label: '报名中' },
+  { value: 'booking', label: '抢位中' },
+]
+
+watch([status, phase, keyword], () => {
+  page.value = 1
+})
+
+function statusLabel(value: string) {
+  const map: Record<string, string> = {
+    published: '已发布',
+    cancelled: '已取消',
+    completed: '已结束',
   }
-  if (item.status === 'completed') {
-    return {
-      class: 'bg-zinc-800 text-zinc-500',
-      text: '已结束',
-    }
-  }
-  // Check phase
-  if (item.phase === 'registration') {
-    return {
-      class: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-      text: '报名中',
-      canOperate: true,
-    }
-  }
-  // Booking phase
-  if (item.occupiedCount >= item.maxParticipants) {
-    return {
-      class: 'bg-red-500/10 text-red-400 border-red-500/20',
-      text: '已满',
-    }
-  }
-  return {
-    class: 'bg-orange-500/10 text-orange-400 border-orange-500/20',
-    text: '抢座中',
-    canOperate: true,
-  }
+  return map[value] || value
 }
 
-function goProfile() {
-  router.push('/profile')
+function phaseLabel(value: string) {
+  return value === 'registration' ? '报名中' : '抢位中'
 }
 
-function goDetail(id: number) {
-  router.push(`/activities/${id}`)
+function activityBadgeVariant(item: any) {
+  if (item.status !== 'published')
+    return 'secondary'
+  return item.phase === 'registration' ? 'default' : 'outline'
 }
 
-// Load More
-async function loadMore() {
-  if (isLoadingMore.value || !hasMore.value || isRefreshing.value)
+function activityStateText(item: any) {
+  return item.status === 'published' ? phaseLabel(item.phase) : statusLabel(item.status)
+}
+
+function formatDeadline(item: any) {
+  return dayjs(item.deadline).format('MM-DD HH:mm')
+}
+
+function goDetail(code: string) {
+  router.push(`/a/${code}`)
+}
+
+function goEdit(code: string) {
+  router.push(`/a/edit/${code}`)
+}
+
+function clearFilters() {
+  status.value = 'all'
+  phase.value = 'all'
+  keywordInput.value = ''
+  keyword.value = ''
+}
+
+async function logout() {
+  await authStore.logout()
+  router.push('/login')
+}
+
+async function handleManualRefresh() {
+  if (isRefreshButtonBusy.value)
     return
-  isLoadingMore.value = true
 
+  isManualRefreshing.value = true
   try {
-    const nextPage = page.value + 1
-    const res = await $fetch('/api/activities/user', {
-      query: { page: nextPage, limit },
-    })
-
-    if (res.activities.length > 0) {
-      activities.value.push(...res.activities)
-      page.value = nextPage
-    }
-    hasMore.value = res.pagination.hasMore
-  }
-  catch (e) {
-    console.error('Load more failed', e)
+    await Promise.all([
+      refresh(),
+      new Promise(resolve => setTimeout(resolve, 1000)),
+    ])
   }
   finally {
-    isLoadingMore.value = false
-  }
-}
-
-// Infinite Scroll
-useInfiniteScroll(
-  typeof window !== 'undefined' ? window : null,
-  loadMore,
-  { distance: 100 },
-)
-
-// Pull to Refresh Logic
-function onTouchStart(e: TouchEvent) {
-  if (window.scrollY === 0 && e.touches.length > 0 && e.touches[0]) {
-    touchStartY.value = e.touches[0].clientY
-    isPulling.value = true
-  }
-}
-
-function onTouchMove(e: TouchEvent) {
-  if (!isPulling.value || e.touches.length === 0 || !e.touches[0])
-    return
-
-  const currentY = e.touches[0].clientY
-  const dy = currentY - touchStartY.value
-
-  if (dy > 0 && window.scrollY === 0) {
-    // Resistance effect
-    pullDistance.value = Math.min(dy * 0.5, 120) // Cap at 120px
-    if (e.cancelable)
-      e.preventDefault() // Prevent native scroll if possible
-  }
-  else {
-    pullDistance.value = 0
-  }
-}
-
-async function onTouchEnd() {
-  if (!isPulling.value)
-    return
-  isPulling.value = false
-
-  if (pullDistance.value > 60) {
-    // Trigger refresh
-    isRefreshing.value = true
-    pullDistance.value = 60 // Snap to loading position
-
-    try {
-      const res = await $fetch('/api/activities/user', {
-        query: { page: 1, limit },
-      })
-      activities.value = res.activities
-      page.value = 1
-      hasMore.value = res.pagination.hasMore
-    }
-    catch (e) {
-      console.error('Refresh failed', e)
-    }
-    finally {
-      setTimeout(() => {
-        isRefreshing.value = false
-        pullDistance.value = 0
-      }, 500)
-    }
-  }
-  else {
-    // Snap back
-    pullDistance.value = 0
+    isManualRefreshing.value = false
   }
 }
 </script>
 
 <template>
-  <div
-    class="min-h-screen bg-gray-50 pb-12"
-    @touchstart="onTouchStart"
-    @touchmove="onTouchMove"
-    @touchend="onTouchEnd"
-  >
-    <!-- Pull Refresh Indicator -->
-    <div
-      class="fixed top-0 left-0 w-full flex justify-center items-center h-16 pointer-events-none z-40"
-      :class="{ 'transition-transform duration-300 ease-out': !isPulling }"
-      :style="{ transform: `translateY(${pullDistance > 0 ? pullDistance + 40 : 0}px)`, opacity: pullDistance > 0 || isRefreshing ? 1 : 0 }"
-    >
-      <div class="bg-white/80 backdrop-blur-md rounded-full p-2 shadow-md">
-        <Loader2 v-if="isRefreshing" class="w-5 h-5 animate-spin text-primary" />
-        <ArrowDown v-else class="w-5 h-5 text-gray-500 transition-transform duration-200" :style="{ transform: `rotate(${pullDistance > 60 ? 180 : 0}deg)` }" />
-      </div>
-    </div>
-
-    <!-- Header -->
-    <div
-      class="sticky top-0 z-50 bg-[#1c1c1e] backdrop-blur-xl text-white px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden"
-    >
-      <!-- Header Background Decoration -->
-      <div class="absolute -right-4 -top-10 h-24 w-24 rounded-full bg-white/5 blur-2xl pointer-events-none" />
-      <div class="absolute -left-4 -top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
-
-      <div class="font-bold text-lg tracking-wide relative z-10 flex items-center gap-2">
-        <span class="bg-clip-text text-transparent bg-linear-to-r from-white to-white/60">随机舞蹈</span>
-      </div>
-      <div class="flex items-center gap-3 relative z-10">
-        <div class="text-sm text-right h-[32px] flex flex-col justify-center">
-          <div class="font-bold leading-none text-white/90">
-            {{ getUserNickname(authStore.user) }}
-          </div>
-          <div class="text-[10px] text-white/40 font-medium">
-            {{ getUserRole(authStore.user) }}
-          </div>
+  <div class="min-h-screen bg-muted/30 pb-8">
+    <header class="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
+      <div class="mx-auto flex w-full max-w-full items-center gap-2 px-3 py-2">
+        <Button variant="ghost" size="icon" class="h-9 w-9 shrink-0" @click="logout">
+          <LogOut class="h-4 w-4" />
+          <span class="sr-only">退出</span>
+        </Button>
+        <div class="min-w-0 flex-1">
+          <h1 class="truncate text-base font-semibold leading-6">活动管理</h1>
+          <p class="truncate text-xs text-muted-foreground">
+            {{ authStore.user ? (authStore.user.nickname || authStore.user.mobile || '管理员') : '未登录' }}
+          </p>
         </div>
-        <Button variant="ghost" size="icon" class="text-white/60 hover:text-white hover:bg-white/10 rounded-full h-8 w-8 transition-all duration-300" @click="goProfile">
-          <span class="sr-only">个人中心</span>
-          <User class="w-5 h-5" />
+        <Button v-if="authStore.user?.isAdmin" size="sm" class="h-9 shrink-0 px-3" @click="router.push('/a/create')">
+          <Plus class="mr-1.5 h-4 w-4" />
+          新建
+        </Button>
+        <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" :disabled="isRefreshButtonBusy" @click="handleManualRefresh">
+          <RefreshCcw class="h-4 w-4" :class="{ 'animate-spin': isRefreshButtonBusy }" />
+          <span class="sr-only">刷新</span>
         </Button>
       </div>
-    </div>
+    </header>
 
-    <!-- Activity List -->
-    <div
-      class="p-4"
-      :class="{ 'transition-transform duration-300 ease-out': !isPulling }"
-      :style="{ transform: `translateY(${pullDistance}px)` }"
-    >
-      <div v-if="activities.length === 0 && !isLoadingMore && !isRefreshing" class="text-center py-10 text-muted-foreground">
-        暂无活动
-      </div>
+    <main class="mx-auto w-full max-w-full space-y-3 p-3">
+      <Card v-if="authStore.user && !authStore.user.isAdmin">
+        <CardHeader>
+          <CardTitle>无权限</CardTitle>
+          <CardDescription>首页仅用于管理员活动管理。游客只能通过活动链接访问详情页。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" @click="logout">返回登录</Button>
+        </CardContent>
+      </Card>
 
-      <div v-else class="space-y-4">
-        <Motion
-          v-for="(item, index) in activities"
-          :key="item.id"
-          :initial="{ opacity: 0, y: 20 }"
-          :animate="{ opacity: 1, y: 0 }"
-          :transition="{ delay: index * 0.1, duration: 0.4 }"
-        >
-          <!-- Time Label -->
-          <div class="mb-1.5 flex items-baseline gap-2 px-1">
-            <span class="text-xl font-bold text-gray-900 tracking-tight font-mono">
-              {{ dayjs(item.startTime).format('HH:mm') }}
-            </span>
-            <span class="text-sm font-medium text-gray-500">
-              {{ dayjs(item.startTime).format('MM月DD日') }}
-            </span>
-          </div>
-
-          <!-- Card -->
-          <Motion
-            class="relative overflow-hidden rounded-2xl bg-[#1c1c1e] text-white shadow-lg cursor-pointer group touch-manipulation select-none"
-            :while-hover="{ scale: 1.02 }"
-            :while-tap="{ scale: 0.96 }"
-            :transition="{ type: 'spring', stiffness: 400, damping: 17 }"
-            @click="goDetail(item.id)"
-          >
-            <!-- Background Decoration -->
-            <div class="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/5 blur-3xl transition-all duration-700 group-hover:bg-white/10 group-active:bg-white/10" />
-            <div class="absolute -left-10 -bottom-10 h-32 w-32 rounded-full bg-primary/10 blur-3xl transition-all duration-700 group-hover:bg-primary/20 group-active:bg-primary/20" />
-
-            <div class="p-4 relative z-10">
-              <!-- Header -->
-              <div class="flex items-start justify-between mb-3">
-                <div class="flex-1 min-w-0 mr-3">
-                  <h3 class="text-lg font-bold leading-tight mb-1 truncate text-white/90">
-                    {{ item.title }}
-                  </h3>
-                  <p class="text-xs text-white/50 line-clamp-1 leading-relaxed font-light">
-                    {{ item.description || '暂无描述' }}
-                  </p>
-                </div>
-                <div class="flex items-center gap-2 shrink-0">
-                  <span v-if="dayjs(item.startTime).isAfter(dayjs())" class="text-[10px] font-semibold text-amber-300 bg-amber-500/20 px-2 py-0.5 rounded-full border border-amber-500/30 backdrop-blur-md shadow-sm">
-                    即将开始
-                  </span>
-                  <Badge
-                    class="border px-2 py-0.5 backdrop-blur-md text-[10px] shadow-sm"
-                    :class="getActivityStatus(item).class"
-                  >
-                    {{ getActivityStatus(item).text }}
-                  </Badge>
-                </div>
+      <template v-else>
+        <div class="rounded-lg border bg-background">
+          <div class="grid gap-3 p-3">
+            <div class="space-y-3">
+              <div class="relative">
+                <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  v-model="keywordInput"
+                  class="h-10 pl-9 pr-9"
+                  placeholder="搜索活动标题或描述"
+                />
+                <button
+                  v-if="keywordInput"
+                  type="button"
+                  class="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  @click="keywordInput = ''; keyword = ''"
+                >
+                  <X class="h-3.5 w-3.5" />
+                  <span class="sr-only">清除搜索</span>
+                </button>
               </div>
 
-              <!-- Footer: Seats -->
-              <div class="flex items-center justify-between pt-3 border-t border-white/5">
-                <div class="flex flex-col gap-1.5 w-full mr-4 flex-1 min-w-0">
-                  <div class="flex justify-between text-[10px] font-medium text-white/40">
-                    <span>{{ item.phase === 'registration' ? '已报名' : '剩余位次' }}</span>
-                    <span class="font-mono tracking-tight" :class="item.phase === 'registration' ? 'text-emerald-400' : (item.maxParticipants - item.occupiedCount > 0 ? 'text-emerald-400' : 'text-red-400')">
-                      <template v-if="item.phase === 'registration'">
-                        {{ item.registrationCount || 0 }} 人
-                      </template>
-                      <template v-else>
-                        {{ item.maxParticipants - item.occupiedCount }} / {{ item.maxParticipants }}
-                      </template>
-                    </span>
-                  </div>
-                  <div class="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                    <Motion
-                      v-if="item.phase === 'booking'"
-                      class="h-full rounded-full shadow-[0_0_8px_rgba(0,0,0,0.3)]"
-                      :class="item.occupiedCount >= item.maxParticipants ? 'bg-red-500' : 'bg-emerald-500'"
-                      :initial="{ width: 0 }"
-                      :animate="{ width: `${Math.min((item.occupiedCount / item.maxParticipants) * 100, 100)}%` }"
-                      :transition="{ duration: 1, ease: 'easeOut' }"
-                    />
-                    <div v-else class="h-full rounded-full bg-emerald-500/50" :style="{ width: `${Math.min((item.registrationCount || 0) * 10, 100)}%` }" />
+              <div class="space-y-2">
+                <div class="grid grid-cols-[36px_minmax(0,1fr)] items-start gap-2">
+                  <span class="pt-1.5 text-xs text-muted-foreground">状态</span>
+                  <div class="flex min-w-0 flex-wrap gap-2">
+                    <Button
+                      v-for="item in statusOptions"
+                      :key="item.value"
+                      type="button"
+                      size="sm"
+                      :variant="status === item.value ? 'default' : 'outline'"
+                      class="h-8 px-3"
+                      @click="status = item.value"
+                    >
+                      {{ item.label }}
+                    </Button>
                   </div>
                 </div>
-
-                <div class="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center text-white/40 group-hover:bg-white group-active:bg-white group-hover:text-black group-active:text-black transition-colors duration-300 backdrop-blur-sm">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+                <div class="grid grid-cols-[36px_minmax(0,1fr)] items-start gap-2">
+                  <span class="pt-1.5 text-xs text-muted-foreground">阶段</span>
+                  <div class="flex min-w-0 flex-wrap gap-2">
+                    <Button
+                      v-for="item in phaseOptions"
+                      :key="item.value"
+                      type="button"
+                      size="sm"
+                      :variant="phase === item.value ? 'default' : 'outline'"
+                      class="h-8 px-3"
+                      @click="phase = item.value"
+                    >
+                      {{ item.label }}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
-          </Motion>
-        </Motion>
 
-        <!-- Loading More Indicator -->
-        <div v-if="isLoadingMore" class="py-4 flex justify-center">
-          <Loader2 class="w-6 h-6 animate-spin text-gray-400" />
+            <div v-if="hasActiveFilters" class="flex min-w-0 items-center justify-between gap-3 border-t pt-3">
+              <div class="min-w-0 truncate text-sm text-muted-foreground">
+                已应用筛选
+              </div>
+              <Button v-if="hasActiveFilters" variant="ghost" size="sm" class="h-8 shrink-0" @click="clearFilters">
+                清空筛选
+              </Button>
+            </div>
+          </div>
         </div>
-        <div v-else-if="!hasMore && activities.length > 0" class="py-4 text-center text-xs text-gray-400">
-          没有更多活动了
-        </div>
-      </div>
-    </div>
 
-    <!-- Admin Create Button -->
-    <div v-if="authStore.user?.isAdmin" class="fixed bottom-8 right-6 z-40">
-      <Motion
-        :initial="{ scale: 0, rotate: -90 }"
-        :animate="{ scale: 1, rotate: 0 }"
-        :while-hover="{ scale: 1.1 }"
-        :while-tap="{ scale: 0.9 }"
-      >
-        <Button class="rounded-full h-14 w-14 shadow-xl p-0 bg-[#1c1c1e] text-white hover:bg-zinc-800 border border-white/10" @click.stop="router.push('/activities/create')">
-          <Plus class="h-7 w-7" />
-        </Button>
-      </Motion>
-    </div>
+        <div class="rounded-lg border bg-background">
+          <div v-if="pending" class="space-y-3 p-4">
+            <div v-for="i in 4" :key="i" class="h-[88px] rounded-md bg-muted" />
+          </div>
+
+          <div v-else-if="activities.length === 0" class="p-8 text-center">
+            <div class="text-sm font-medium">没有匹配的活动</div>
+            <p class="mt-1 text-sm text-muted-foreground">调整搜索词或清空筛选后再看。</p>
+            <Button v-if="hasActiveFilters" variant="outline" size="sm" class="mt-4" @click="clearFilters">
+              清空筛选
+            </Button>
+          </div>
+
+          <div v-else class="divide-y">
+            <div
+              v-for="item in activities"
+              :key="item.code"
+              class="grid min-w-0 gap-3 p-3"
+            >
+              <div class="min-w-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  <button class="min-w-0 truncate text-left font-medium hover:underline" @click="goDetail(item.code)">
+                    {{ item.title }}
+                  </button>
+                  <Badge class="shrink-0" :variant="activityBadgeVariant(item)">
+                    {{ activityStateText(item) }}
+                  </Badge>
+                </div>
+                <p class="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                  {{ item.description || '暂无描述' }}
+                </p>
+              </div>
+
+              <div class="flex items-center gap-1.5 text-sm">
+                <Clock class="h-3.5 w-3.5 text-muted-foreground" />
+                <span>{{ formatDeadline(item) }} 报名截止</span>
+              </div>
+
+              <div class="grid min-w-0 grid-cols-2 gap-2 text-sm">
+                <div class="rounded-md bg-muted/50 px-2 py-1">
+                  <span class="text-xs text-muted-foreground">报名 </span>
+                  <span class="font-medium">{{ item.registrationCount || 0 }}</span>
+                </div>
+                <div class="rounded-md bg-muted/50 px-2 py-1">
+                  <span class="text-xs text-muted-foreground">占位 </span>
+                  <span class="font-medium">{{ item.occupiedCount || 0 }}</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <Button variant="outline" size="sm" @click="goDetail(item.code)">
+                  详情
+                </Button>
+                <Button variant="outline" size="sm" @click="goEdit(item.code)">
+                  编辑
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-lg border bg-background p-3">
+          <div class="flex min-w-0 items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="truncate text-sm font-medium">
+                共 {{ pagination.total }} 个活动
+              </div>
+              <div class="truncate text-xs text-muted-foreground">
+                第 {{ pagination.page }} / {{ pagination.totalPages }} 页
+                <span v-if="pagination.total > 0">
+                  · 当前 {{ visibleFrom }}-{{ visibleTo }}
+                </span>
+              </div>
+            </div>
+            <div class="grid shrink-0 grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" class="h-9 min-w-0 px-2.5" :disabled="page <= 1" @click="page--">
+                <ChevronLeft class="mr-1 h-4 w-4" />
+                上一页
+              </Button>
+              <Button variant="outline" size="sm" class="h-9 min-w-0 px-2.5" :disabled="!pagination.hasMore" @click="page++">
+                下一页
+                <ChevronRight class="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </template>
+    </main>
   </div>
 </template>

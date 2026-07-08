@@ -5,7 +5,7 @@ import { getActivityPhase } from '../../../utils/activity-phase'
 import { db } from '../../../utils/db'
 
 const advancePhaseSchema = z.object({
-  id: z.number().int(),
+  code: z.string(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -21,10 +21,10 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
 
-  const { id } = validation.data
+  const { code } = validation.data
   const currentActivity = db.select()
     .from(activities)
-    .where(and(eq(activities.id, id), eq(activities.creatorId, user.id)))
+    .where(and(eq(activities.code, code), eq(activities.creatorId, user.id)))
     .get()
 
   if (!currentActivity) {
@@ -36,22 +36,22 @@ export default defineEventHandler(async (event) => {
   }
 
   if (getActivityPhase(currentActivity) !== 'registration') {
-    throw createError({ statusCode: 400, message: '当前活动已在抢座阶段' })
+    throw createError({ statusCode: 400, message: '当前活动已在抢位阶段' })
   }
 
   const registrationCountResult = db.select({ count: count() })
     .from(registrations)
-    .where(eq(registrations.activityId, id))
+    .where(eq(registrations.activityId, currentActivity.id))
     .get()
   const registrationCount = registrationCountResult?.count || 0
 
   const updatedActivity = db.transaction((tx) => {
     const activity = tx.update(activities)
       .set({
-        registrationDeadline: new Date(Date.now() - 1000),
+        deadline: new Date(Date.now() - 1000),
         updatedAt: new Date(),
       })
-      .where(eq(activities.id, id))
+      .where(eq(activities.id, currentActivity.id))
       .returning()
       .get()
 
@@ -61,12 +61,12 @@ export default defineEventHandler(async (event) => {
 
     const existingSeatsCount = tx.select({ count: count() })
       .from(activitySeats)
-      .where(eq(activitySeats.activityId, id))
+      .where(eq(activitySeats.activityId, currentActivity.id))
       .get()
 
     if ((!existingSeatsCount?.count || existingSeatsCount.count === 0) && registrationCount > 0) {
       const seatsToInsert = Array.from({ length: registrationCount }, (_, i) => ({
-        activityId: id,
+        activityId: currentActivity.id,
         seatNumber: i + 1,
       }))
       tx.insert(activitySeats).values(seatsToInsert).run()

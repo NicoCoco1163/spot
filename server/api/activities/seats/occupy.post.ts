@@ -1,75 +1,76 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 import { activities, activitySeats, registrations } from '../../../database/schema'
+import { activityCodeSchema } from '../../../utils/activity-code'
 import { canOccupySeat } from '../../../utils/activity-phase'
 import { db } from '../../../utils/db'
+import { mainlandMobilePattern, normalizeMobile } from '../../../utils/mobile'
 
 const occupySeatSchema = z.object({
-  activityId: z.number().int(),
+  activityCode: z.string().regex(activityCodeSchema, '活动不存在'),
   seatNumber: z.number().int(),
+  mobile: z.string().transform(normalizeMobile).pipe(z.string().regex(mainlandMobilePattern, '请输入有效的中国大陆手机号')),
   remark: z.string().optional(),
 })
 
 export default defineEventHandler(async (event) => {
-  // 1. 鉴权
-  const user = event.context.user
-  if (!user) {
-    throw createError({ statusCode: 401, message: '请先登录' })
-  }
-
-  // 2. 校验参数
+  // 1. 校验参数
   const body = await readBody(event)
   const validation = occupySeatSchema.safeParse(body)
   if (!validation.success) {
     const firstError = validation.error.issues[0]
     throw createError({ statusCode: 400, message: firstError?.message || '参数错误' })
   }
-  const { activityId, seatNumber, remark } = validation.data
+  const { activityCode, seatNumber, mobile, remark } = validation.data
 
-  // 3. 事务操作：抢占座位
+  // 2. 事务操作：抢占座位
   const result = db.transaction((tx) => {
-    // 3.1 检查活动状态
-    const activity = tx.select().from(activities).where(eq(activities.id, activityId)).get()
+    // 2.1 检查活动状态
+    const activity = tx.select().from(activities).where(eq(activities.code, activityCode)).get()
     if (!activity) {
       throw createError({ statusCode: 404, message: '活动不存在' })
     }
+    const activityId = activity.id
     if (activity.status !== 'published') {
       throw createError({ statusCode: 400, message: '活动未开始或已结束' })
     }
 
-    // 3.2 检查是否在抢座阶段
+    // 2.2 检查是否在抢位阶段
     if (!canOccupySeat(activity)) {
-      throw createError({ statusCode: 400, message: '当前不在抢座阶段' })
+      throw createError({ statusCode: 400, message: '当前不在抢位阶段' })
     }
 
-    // 3.3 检查用户是否已报名
+    // 2.3 检查手机号是否已报名
     const registration = tx.select()
       .from(registrations)
       .where(and(
         eq(registrations.activityId, activityId),
-        eq(registrations.userId, user.id),
+        eq(registrations.mobile, mobile),
       ))
       .get()
 
     if (!registration) {
-      throw createError({ statusCode: 400, message: '您尚未报名该活动，无法抢座' })
+      throw createError({ statusCode: 400, message: '您尚未报名该活动，无法抢位' })
+    }
+    if (!registration.teamName?.trim() || !registration.songName?.trim()) {
+      throw createError({ statusCode: 400, message: '请先补齐队伍名称和歌曲名称后再抢位' })
     }
 
-    // 3.4 检查用户是否已在该活动中占位
+    // 2.4 检查手机号是否已在该活动中占位
     const existingSeat = tx.select()
       .from(activitySeats)
-      .where(and(eq(activitySeats.activityId, activityId), eq(activitySeats.userId, user.id)))
+      .where(and(eq(activitySeats.activityId, activityId), eq(activitySeats.mobile, mobile)))
       .get()
 
     if (existingSeat) {
-      throw createError({ statusCode: 400, message: `您已占用了 ${existingSeat.seatNumber} 号座位，请先释放` })
+      throw createError({ statusCode: 400, message: `您已占用了 ${existingSeat.seatNumber} 号位次，请先释放` })
     }
 
-    // 3.5 尝试抢占
-    // 使用 update ... where userId is null 来实现乐观锁效果
+    // 2.5 尝试抢占
+    // 使用 update ... where mobile is null 来实现乐观锁效果
     const updatedSeat = tx.update(activitySeats)
       .set({
-        userId: user.id,
+        mobile,
         registrationId: registration.id,
         remark: remark || null,
         occupiedAt: new Date(),
@@ -77,7 +78,7 @@ export default defineEventHandler(async (event) => {
       .where(and(
         eq(activitySeats.activityId, activityId),
         eq(activitySeats.seatNumber, seatNumber),
-        isNull(activitySeats.userId), // 关键：确保座位未被占用
+        isNull(activitySeats.mobile), // 关键：确保座位未被占用
       ))
       .returning()
       .get()

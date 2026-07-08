@@ -1,13 +1,12 @@
 import { z } from 'zod'
 import { activities } from '../../../database/schema'
+import { createUniqueActivityCode } from '../../../utils/activity-code'
 import { db } from '../../../utils/db'
 
 const createActivitySchema = z.object({
   title: z.string().min(1, '标题不能为空'),
   description: z.string().optional(),
-  startTime: z.coerce.date(),
-  endTime: z.coerce.date().optional(),
-  registrationDeadline: z.coerce.date(), // 报名截止时间，必填
+  deadline: z.coerce.date(),
 })
 
 export default defineEventHandler(async (event) => {
@@ -26,14 +25,10 @@ export default defineEventHandler(async (event) => {
   }
   const data = validation.data
 
-  // 3. 校验截止时间必须早于开始时间
-  if (data.registrationDeadline >= data.startTime) {
-    throw createError({ statusCode: 400, message: '报名截止时间必须早于活动开始时间' })
-  }
-
-  // 4. 创建活动（不创建座位，座位在截止后懒加载创建）
+  // 3. 创建活动（不创建位次，位次在报名截止后懒加载创建）
   const newActivity = db.insert(activities).values({
     ...data,
+    code: createUniqueActivityCode(),
     creatorId: user.id,
   }).returning().get()
 

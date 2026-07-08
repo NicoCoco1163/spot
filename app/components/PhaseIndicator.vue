@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { AlarmClock } from 'lucide-vue-next'
+import { AlarmClock } from '@lucide/vue'
 
 const props = defineProps<{
   phase: 'registration' | 'booking'
-  registrationDeadline?: Date | string | null
+  deadline?: Date | string | null
   registrationCount?: number
   compact?: boolean
 }>()
@@ -11,9 +11,9 @@ const props = defineProps<{
 const dayjs = useDayjs()
 
 const formattedDeadline = computed(() => {
-  if (!props.registrationDeadline)
+  if (!props.deadline)
     return null
-  return dayjs(props.registrationDeadline).format('MM月DD日 HH:mm')
+  return dayjs(props.deadline).format('MM月DD日 HH:mm')
 })
 
 // 倒计时数据
@@ -27,12 +27,12 @@ const timeData = ref({
 let timer: ReturnType<typeof setInterval> | null = null
 
 function updateTimeRemaining() {
-  if (!props.registrationDeadline) {
+  if (!props.deadline) {
     timeData.value = { days: 0, hours: 0, minutes: 0, seconds: 0, total: 0 }
     return
   }
 
-  const deadline = new Date(props.registrationDeadline).getTime()
+  const deadline = new Date(props.deadline).getTime()
   const now = Date.now()
   const diff = deadline - now
 
@@ -111,14 +111,14 @@ onUnmounted(() => {
   }
 })
 
-watch(() => props.registrationDeadline, updateTimeRemaining)
+watch(() => props.deadline, updateTimeRemaining)
 </script>
 
 <template>
   <div v-if="compact" class="space-y-2">
     <div class="min-w-0 flex items-center gap-2 text-sm text-muted-foreground">
       <AlarmClock class="w-4 h-4" :class="urgencyStyles.text" />
-      <span class="truncate font-mono tabular-nums">截止时间 {{ formattedDeadline }}</span>
+      <span class="truncate font-mono tabular-nums">报名截止 {{ formattedDeadline }}</span>
     </div>
     <div
       v-if="!isExpired"

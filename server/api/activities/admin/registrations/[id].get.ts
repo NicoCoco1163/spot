@@ -1,10 +1,11 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { registrations, users } from '../../../../database/schema'
+import { activities, registrations } from '../../../../database/schema'
+import { activityCodeSchema } from '../../../../utils/activity-code'
 import { db } from '../../../../utils/db'
 
 const paramsSchema = z.object({
-  id: z.coerce.number().int(),
+  id: z.string().regex(activityCodeSchema, '活动不存在'),
 })
 
 export default defineEventHandler(async (event) => {
@@ -16,25 +17,27 @@ export default defineEventHandler(async (event) => {
 
   // 2. 校验参数
   const params = await getValidatedRouterParams(event, paramsSchema.parse)
-  const activityId = params.id
+  const activity = db.select({ id: activities.id })
+    .from(activities)
+    .where(eq(activities.code, params.id))
+    .get()
+  if (!activity) {
+    throw createError({ statusCode: 404, message: '活动不存在' })
+  }
 
   // 3. 获取该活动的所有报名信息
   const registrationList = db.select({
     id: registrations.id,
-    song: registrations.song,
-    captain: registrations.captain,
+    teamName: registrations.teamName,
+    songName: registrations.songName,
+    songDuration: registrations.songDuration,
     members: registrations.members,
+    mobile: registrations.mobile,
     createdAt: registrations.createdAt,
     updatedAt: registrations.updatedAt,
-    user: {
-      id: users.id,
-      nickname: users.nickname,
-      mobile: users.mobile,
-    },
   })
     .from(registrations)
-    .leftJoin(users, eq(registrations.userId, users.id))
-    .where(eq(registrations.activityId, activityId))
+    .where(eq(registrations.activityId, activity.id))
     .all()
 
   return { registrations: registrationList }

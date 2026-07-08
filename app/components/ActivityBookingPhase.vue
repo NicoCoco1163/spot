@@ -1,110 +1,127 @@
 <script setup lang="ts">
 const props = defineProps<{
-  activityId: number
+  activityCode: string
   seats: any[]
   mySeat: any
   myRegistration: any
-  currentUserId?: number
+  currentMobile?: string
   swapMode?: boolean
   swapFromSeatNumber?: number | null
+  adminMode?: boolean
 }>()
 
 const emit = defineEmits<{
   seatClick: [seat: any]
-  registrationSuccess: []
+  registrationSuccess: [mobile: string]
   registrationEditorOpenChange: [open: boolean]
 }>()
 
 const dayjs = useDayjs()
 const showEditRegistrationDialog = ref(false)
+const needsRequiredDetails = computed(() => {
+  return !props.myRegistration?.teamName?.trim() || !props.myRegistration?.songName?.trim()
+})
 
 watch(showEditRegistrationDialog, open => emit('registrationEditorOpenChange', open))
 
-function handleRegistrationSuccess() {
+function handleRegistrationSuccess(mobile: string) {
   showEditRegistrationDialog.value = false
-  emit('registrationSuccess')
+  emit('registrationSuccess', mobile)
 }
 </script>
 
 <template>
-  <div v-if="props.myRegistration" class="rounded-xl border bg-white p-3 shadow-xs">
-    <div class="mb-2 flex items-center justify-between gap-2">
-      <h2 class="text-xs font-semibold tracking-tight text-gray-900">
-        报名信息
-      </h2>
-      <div class="flex items-center gap-1.5">
-        <span class="inline-flex items-center rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-          已报名
-        </span>
-        <Button variant="ghost" size="sm" class="h-6 px-2 text-[11px] text-gray-500 hover:text-gray-800" @click="showEditRegistrationDialog = true">
-          修改
-        </Button>
+  <Card v-if="!props.adminMode && props.myRegistration">
+    <CardHeader class="px-3 pb-2 pt-3">
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <CardTitle class="text-base">
+            抢位资格
+          </CardTitle>
+        </div>
+        <Badge v-if="props.myRegistration" :variant="needsRequiredDetails ? 'secondary' : 'default'">
+          {{ needsRequiredDetails ? '待补资料' : '可抢位' }}
+        </Badge>
       </div>
-    </div>
-    <div class="grid gap-1.5 text-xs">
-      <div v-if="props.myRegistration.song" class="rounded-md bg-gray-50 px-2.5 py-2">
-        <span class="text-gray-400 mr-2">歌曲</span><span class="text-gray-700">{{ props.myRegistration.song }}</span>
+    </CardHeader>
+    <CardContent class="space-y-2 px-3 pb-3 text-sm">
+      <div class="min-w-0 rounded-md bg-muted/50 px-2 py-2">
+        <div class="flex min-w-0 items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="truncate font-medium">
+              {{ props.myRegistration.teamName || '未填写队伍名称' }}
+            </div>
+            <div class="mt-0.5 truncate text-xs text-muted-foreground">
+              {{ props.myRegistration.songName || '未填写歌曲名称' }}
+              <span v-if="props.myRegistration.songDuration">
+                · {{ props.myRegistration.songDuration }} 秒
+              </span>
+            </div>
+          </div>
+          <div v-if="props.mySeat" class="shrink-0 rounded-md bg-background px-2 py-1 text-xs font-medium">
+            {{ props.mySeat.seatNumber }} 号
+          </div>
+        </div>
       </div>
-      <div v-if="props.myRegistration.captain" class="rounded-md bg-gray-50 px-2.5 py-2">
-        <span class="text-gray-400 mr-2">队长</span><span class="text-gray-700">{{ props.myRegistration.captain }}</span>
-      </div>
-      <div v-if="props.myRegistration.members" class="rounded-md bg-gray-50 px-2.5 py-2">
-        <span class="text-gray-400 mr-2">成员</span><span class="text-gray-700">{{ props.myRegistration.members }}</span>
-      </div>
-      <div v-if="props.mySeat?.remark" class="rounded-md bg-gray-50 px-2.5 py-2">
-        <span class="text-gray-400 mr-2">备注</span><span class="text-gray-700">{{ props.mySeat.remark || '未填写' }}</span>
-      </div>
-    </div>
+      <Button variant="outline" size="sm" class="h-8 w-full" @click="showEditRegistrationDialog = true">
+        {{ needsRequiredDetails ? '补齐抢位资料' : '修改报名资料' }}
+      </Button>
+    </CardContent>
+  </Card>
+  <div v-else-if="!props.adminMode" class="flex items-center gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+    <Badge variant="destructive" class="shrink-0">
+      未报名
+    </Badge>
+    <p class="min-w-0 truncate text-muted-foreground">
+      当前手机号未报名，不能抢位
+    </p>
   </div>
 
   <div>
-    <h2 class="font-bold text-gray-900 text-lg mb-2 px-1 flex justify-between items-center tracking-tight">
+    <h2 class="mb-2 flex items-center justify-between gap-2 px-1 text-base font-semibold tracking-tight text-foreground">
       <span>表演顺序</span>
-      <span v-if="props.mySeat" class="bg-black px-3 py-1.5 rounded-md shadow-md shadow-black/10 flex items-center gap-2">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        <span class="text-xs text-white font-mono tabular-nums">我的位次 {{ props.mySeat.seatNumber }}号</span>
-      </span>
+      <Badge v-if="!props.adminMode && props.mySeat" variant="secondary" class="shrink-0">我的位次 {{ props.mySeat.seatNumber }} 号</Badge>
     </h2>
 
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+    <div class="grid grid-cols-3 gap-1.5">
       <div
         v-for="seat in props.seats"
         :key="seat.id"
         class="relative"
       >
         <button
-          class="w-full h-[88px] rounded-xl flex flex-col justify-between p-2.5 transition-all duration-300 text-left relative overflow-hidden group border"
+          class="group relative flex h-[72px] w-full flex-col justify-between overflow-hidden rounded-md border p-2 text-left"
           :class="[
             seat.isOccupied
-              ? (seat.user?.id === props.currentUserId
-                ? 'bg-black text-white scale-[1.02] z-10'
-                : 'bg-white text-gray-900')
-              : 'bg-gray-50/50 border-gray-200/60 border-dashed text-gray-400 hover:border-gray-300 hover:bg-gray-100 active:scale-[0.98]',
+              ? (!props.adminMode && seat.mobile === props.currentMobile
+                ? 'bg-primary text-primary-foreground z-10'
+                : 'bg-background text-foreground')
+              : 'bg-gray-50/50 border-gray-200/60 border-dashed text-gray-500 hover:border-gray-300 hover:bg-gray-100',
             props.swapMode && seat.isOccupied ? 'hover:ring-2 hover:ring-emerald-400/60 cursor-pointer' : '',
             props.swapMode && props.swapFromSeatNumber === seat.seatNumber
-              ? (seat.user?.id === props.currentUserId
+              ? (!props.adminMode && seat.mobile === props.currentMobile
                 ? 'ring-2 ring-emerald-400 shadow-[0_0_0_1px_rgba(52,211,153,0.45)_inset]'
                 : 'ring-2 ring-emerald-500 bg-emerald-50 text-emerald-900')
               : '',
           ]"
           @click="emit('seatClick', seat)"
         >
-          <div class="flex justify-between items-start w-full">
-            <span class="text-base font-bold font-mono tabular-nums transition-opacity leading-none" :class="seat.isOccupied && seat.user?.id === props.currentUserId ? 'text-white/40' : 'opacity-40 group-hover:opacity-60'">{{ seat.seatNumber }}</span>
-            <span v-if="seat.isOccupied && seat.occupiedAt" class="text-[10px] font-mono leading-none" :class="seat.user?.id === props.currentUserId ? 'text-white/40' : 'text-gray-400'">
+          <div class="flex w-full items-start justify-between">
+            <span class="font-mono text-sm font-bold leading-none tabular-nums transition-opacity" :class="seat.isOccupied && !props.adminMode && seat.mobile === props.currentMobile ? 'text-white/40' : 'opacity-40 group-hover:opacity-60'">{{ seat.seatNumber }}</span>
+            <span v-if="seat.isOccupied && seat.occupiedAt" class="text-[10px] font-mono leading-none" :class="!props.adminMode && seat.mobile === props.currentMobile ? 'text-white/40' : 'text-gray-400'">
               {{ dayjs(seat.occupiedAt).format('HH:mm') }}
             </span>
           </div>
 
-          <div class="w-full">
-            <div class="font-bold truncate tracking-tight leading-none mb-1.5" :class="[seat.isOccupied ? 'text-sm' : 'text-xs', seat.user?.id === props.currentUserId ? 'text-white' : '']">
-              {{ seat.isOccupied ? getUserNickname(seat.user) : '虚位以待' }}
+          <div class="w-full min-w-0">
+            <div class="mb-1 truncate text-xs font-bold leading-none tracking-tight" :class="!props.adminMode && seat.mobile === props.currentMobile ? 'text-white' : ''">
+              {{ seat.isOccupied ? (seat.registration?.teamName || `尾号${seat.mobile?.slice(-4)}`) : '可抢位' }}
             </div>
             <div
-              class="text-[10px] h-[16px] font-lighter line-clamp-1 w-full break-all truncate"
-              :class="seat.user?.id === props.currentUserId ? 'text-white/70' : 'text-gray-500'"
+              class="h-[14px] w-full truncate break-all text-[10px] leading-none"
+              :class="!props.adminMode && seat.mobile === props.currentMobile ? 'text-white/70' : 'text-gray-500'"
             >
-              {{ seat.remark || (seat.user?.id ? '未填写' : '') }}
+              {{ seat.registration?.songName || seat.remark || (seat.mobile ? '未填写' : '') }}
             </div>
           </div>
         </button>
@@ -112,17 +129,19 @@ function handleRegistrationSuccess() {
     </div>
   </div>
 
-  <Dialog v-model:open="showEditRegistrationDialog">
-    <DialogContent class="max-w-[90%] rounded-2xl top-[20%] translate-y-0 sm:top-[50%] sm:-translate-y-1/2 max-h-[85vh] overflow-y-auto" @open-auto-focus.prevent>
+  <Dialog v-if="!props.adminMode" v-model:open="showEditRegistrationDialog">
+    <DialogContent class="max-h-[85vh] max-w-[calc(100%-1.5rem)] overflow-y-auto" @open-auto-focus.prevent>
       <DialogHeader>
         <DialogTitle>修改报名信息</DialogTitle>
         <DialogDescription>
-          抢座阶段可继续修改歌曲、队长和成员信息
+          抢位阶段手机号不可修改，歌曲名称为抢位必填
         </DialogDescription>
       </DialogHeader>
       <RegistrationForm
-        :activity-id="props.activityId"
+        :activity-code="props.activityCode"
         :initial-data="props.myRegistration"
+        lock-mobile
+        require-details
         @success="handleRegistrationSuccess"
       />
     </DialogContent>
