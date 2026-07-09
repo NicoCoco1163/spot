@@ -1,9 +1,13 @@
 import process from 'node:process'
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { Database } from 'bun:sqlite'
+import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as schema from '../database/schema'
 
-// 数据库文件存储在项目根目录
-const sqlite = new Database(process.env.DATABASE_URL || 'sqlite.db')
+const sqlite = new Database(process.env.DATABASE_URL || 'sqlite.db', {
+  create: true,
+  readwrite: true,
+})
 
-export const db = drizzle(sqlite, { schema })
+sqlite.exec('PRAGMA foreign_keys = ON')
+
+export const db = drizzle({ client: sqlite, schema })

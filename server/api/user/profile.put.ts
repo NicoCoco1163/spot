@@ -18,7 +18,8 @@ export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const validation = updateProfileSchema.safeParse(body)
   if (!validation.success) {
-    throw createError({ statusCode: 400, message: validation.error.issues[0].message })
+    const issue = validation.error.issues[0]
+    throw createError({ statusCode: 400, message: issue?.message ?? '个人资料参数无效' })
   }
   const { nickname } = validation.data
 

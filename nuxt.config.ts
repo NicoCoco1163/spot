@@ -1,5 +1,6 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 import tailwindcss from '@tailwindcss/vite'
+import { defineNuxtConfig } from 'nuxt/config'
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -9,6 +10,19 @@ export default defineNuxtConfig({
     plugins: [
       tailwindcss(),
     ],
+    optimizeDeps: {
+      include: [
+        '@lucide/vue',
+        'clsx',
+        'dayjs',
+        'dayjs/locale/zh-cn',
+        'dayjs/plugin/relativeTime',
+        'dayjs/plugin/updateLocale',
+        'dayjs/plugin/utc',
+        'tailwind-merge',
+        'vue-sonner',
+      ],
+    },
   },
   modules: [
     '@nuxt/eslint',
@@ -25,9 +39,15 @@ export default defineNuxtConfig({
       wechatAppId: '', // NUXT_PUBLIC_WECHAT_APP_ID
     },
   },
+  nitro: {
+    preset: 'bun',
+    rollupConfig: {
+      external: ['bun:sqlite'],
+    },
+  },
   vue: {
     compilerOptions: {
-      isCustomElement: tag => tag === 'altcha-widget',
+      isCustomElement: (tag: string) => tag === 'altcha-widget',
     },
   },
   app: {

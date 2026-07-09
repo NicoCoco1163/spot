@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { ArrowLeft, ArrowLeftRight, ChevronDown, ClipboardList, Loader2, RefreshCcw, Share2 } from '@lucide/vue'
 import { useClipboard, useIntervalFn } from '@vueuse/core'
-import { ArrowLeft, ArrowLeftRight, ClipboardList, Loader2, RefreshCcw, Share2 } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { useAuthStore } from '~/stores/auth'
 import { isMainlandMobile, normalizeMobile } from '~/utils/mobile'
@@ -67,6 +67,7 @@ const seats = computed(() => data.value?.seats || [])
 const phase = computed(() => data.value?.phase || 'registration')
 const registrationCount = computed(() => data.value?.registrationCount || 0)
 const adminRegistrations = computed(() => adminRegistrationsData.value?.registrations || [])
+const shouldShowAdminRegistrationSkeleton = computed(() => isAdminRegistrationsPending.value && !adminRegistrationsData.value)
 const myRegistration = computed(() => data.value?.myRegistration)
 const mobileDraftNormalized = computed(() => normalizeMobile(mobileDraft.value))
 const mobileDraftValid = computed(() => isMainlandMobile(mobileDraft.value))
@@ -638,7 +639,7 @@ watch(isAdmin, (value) => {
             </Badge>
           </div>
 
-          <div v-if="isAdminRegistrationsPending && adminRegistrationRows.length === 0" class="space-y-2">
+          <div v-if="shouldShowAdminRegistrationSkeleton" class="space-y-2">
             <div v-for="i in 3" :key="i" class="h-24 rounded-md bg-muted" />
           </div>
 
@@ -646,54 +647,60 @@ watch(isAdmin, (value) => {
             暂无报名记录
           </div>
 
-          <div v-else class="space-y-2">
-            <div
+          <div v-else class="max-h-[min(70vh,48rem)] space-y-1.5 overflow-y-auto pr-1">
+            <details
               v-for="registration in adminRegistrationRows"
               :key="registration.id"
-              class="rounded-lg border bg-background p-3"
+              class="group rounded-md border bg-background"
             >
-              <div class="flex items-start justify-between gap-3">
-                <div class="min-w-0">
-                  <div class="flex min-w-0 items-center gap-2">
-                    <span class="shrink-0 font-mono text-sm text-muted-foreground">#{{ registration.index }}</span>
-                    <div class="truncate text-sm font-semibold">
-                      {{ registration.teamName || '未填写队伍名称' }}
+              <summary class="flex cursor-pointer list-none items-center gap-2 px-2.5 py-2 [&::-webkit-details-marker]:hidden">
+                <span class="w-7 shrink-0 font-mono text-xs text-muted-foreground">#{{ registration.index }}</span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex min-w-0 items-center gap-1.5">
+                    <div class="min-w-0 truncate text-sm font-semibold leading-5">
+                      {{ registration.teamName || '未填写队伍' }}
                     </div>
+                    <span class="hidden min-w-0 truncate text-xs text-muted-foreground sm:inline">
+                      {{ registration.songName || '未填歌曲' }}
+                    </span>
                   </div>
-                  <div class="mt-1 font-mono text-xs text-muted-foreground">
+                  <div class="mt-0.5 truncate font-mono text-xs leading-4 text-muted-foreground">
                     {{ registration.mobile }}
                   </div>
                 </div>
-                <Badge :variant="registration.seat ? 'default' : 'outline'" class="shrink-0">
+                <Badge :variant="registration.seat ? 'default' : 'outline'" class="h-6 shrink-0 px-2">
                   {{ registration.seat ? `${registration.seat.seatNumber} 号` : '未占位' }}
                 </Badge>
-              </div>
+                <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+              </summary>
 
-              <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <div class="min-w-0 rounded-md bg-muted/50 px-2 py-1.5">
-                  <div class="text-xs text-muted-foreground">歌曲</div>
-                  <div class="mt-0.5 truncate font-medium">{{ registration.songName || '未填写' }}</div>
+              <div class="border-t px-2.5 py-2">
+                <div class="grid grid-cols-2 gap-1.5 text-sm">
+                  <div class="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
+                    <div class="text-xs leading-4 text-muted-foreground">歌曲</div>
+                    <div class="truncate font-medium leading-5">{{ registration.songName || '未填写' }}</div>
+                  </div>
+                  <div class="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
+                    <div class="text-xs leading-4 text-muted-foreground">时长</div>
+                    <div class="truncate font-medium leading-5">{{ formatDuration(registration.songDuration) }}</div>
+                  </div>
                 </div>
-                <div class="min-w-0 rounded-md bg-muted/50 px-2 py-1.5">
-                  <div class="text-xs text-muted-foreground">时长</div>
-                  <div class="mt-0.5 truncate font-medium">{{ formatDuration(registration.songDuration) }}</div>
-                </div>
-              </div>
 
-              <div class="mt-2 rounded-md bg-muted/50 px-2 py-1.5 text-sm">
-                <div class="text-xs text-muted-foreground">队员</div>
-                <div class="mt-0.5 whitespace-pre-wrap break-words">{{ registration.members || '未填写' }}</div>
-              </div>
+                <div class="mt-1.5 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
+                  <div class="text-xs leading-4 text-muted-foreground">队员</div>
+                  <div class="whitespace-pre-wrap break-words leading-5">{{ registration.members || '未填写' }}</div>
+                </div>
 
-              <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                <div class="min-w-0 truncate">
-                  报名 {{ registration.createdAt ? dayjs(registration.createdAt).format('MM-DD HH:mm') : '-' }}
-                </div>
-                <div class="min-w-0 truncate text-right">
-                  更新 {{ registration.updatedAt ? dayjs(registration.updatedAt).format('MM-DD HH:mm') : '-' }}
+                <div class="mt-1.5 grid grid-cols-2 gap-2 text-xs leading-5 text-muted-foreground">
+                  <div class="min-w-0 truncate">
+                    报名 {{ registration.createdAt ? dayjs(registration.createdAt).format('MM-DD HH:mm') : '-' }}
+                  </div>
+                  <div class="min-w-0 truncate text-right">
+                    更新 {{ registration.updatedAt ? dayjs(registration.updatedAt).format('MM-DD HH:mm') : '-' }}
+                  </div>
                 </div>
               </div>
-            </div>
+            </details>
           </div>
         </div>
       </div>

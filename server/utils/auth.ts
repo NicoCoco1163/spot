@@ -1,15 +1,16 @@
 import process from 'node:process'
-import argon2 from 'argon2'
 import { jwtVerify, SignJWT } from 'jose'
 
 // 密码相关
 export async function hashPassword(password: string) {
-  return await argon2.hash(password)
+  return await Bun.password.hash(password, {
+    algorithm: 'argon2id',
+  })
 }
 
 export async function verifyPassword(hash: string, password: string) {
   try {
-    return await argon2.verify(hash, password)
+    return await Bun.password.verify(password, hash)
   }
   catch {
     return false

@@ -15,9 +15,10 @@ export default defineEventHandler(async (event) => {
   // 1. 参数校验
   const result = loginSchema.safeParse(body)
   if (!result.success) {
+    const issue = result.error.issues[0]
     throw createError({
       statusCode: 400,
-      message: result.error.issues[0].message,
+      message: issue?.message ?? '登录参数无效',
     })
   }
 
