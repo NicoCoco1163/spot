@@ -78,7 +78,7 @@ DATABASE_URL=/var/lib/spot/sqlite.db PORT=8066 bun run deploy
 DRY_RUN=1 DATABASE_URL=/var/lib/spot/sqlite.db PORT=8066 bun run deploy
 ```
 
-脚本依赖线上已经安装 `bun` 和 `pm2`。PM2 配置见 `ecosystem.config.js`，它会使用 `bun` 作为 interpreter，避免用 Node 运行时加载 `bun:sqlite` 时报错。
+脚本依赖线上已经安装 `bun` 和 `pm2`。PM2 配置见 `ecosystem.config.cjs`，它会使用 `bun` 作为 interpreter，避免用 Node 运行时加载 `bun:sqlite` 时报错。
 
 ## 手工部署
 
@@ -98,10 +98,10 @@ bun .output/server/index.mjs
 
 建议线上用 PM2 或 systemd 托管进程。无论使用哪种方式，都要确保运行应用时带上同一个 `DATABASE_URL`。
 
-PM2 示例见 `ecosystem.config.js`，它会使用 `bun` 作为 interpreter：
+PM2 示例见 `ecosystem.config.cjs`，它会使用 `bun` 作为 interpreter：
 
 ```bash
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 ```
 
 systemd 环境变量示例：

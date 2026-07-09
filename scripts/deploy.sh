@@ -76,14 +76,14 @@ prepare_database() {
 
 start_or_reload_pm2() {
   if [[ "$DRY_RUN" == "1" ]]; then
-    run "DRY_RUN：跳过 PM2 状态探测，预演 start 命令" pm2 start ecosystem.config.js --only "$APP_NAME" --update-env
+    run "DRY_RUN：跳过 PM2 状态探测，预演 start 命令" pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
     return 0
   fi
 
   if pm2 describe "$APP_NAME" >/dev/null 2>&1; then
-    run "PM2 应用已存在，执行 reload：$APP_NAME" pm2 reload ecosystem.config.js --only "$APP_NAME" --update-env
+    run "PM2 应用已存在，执行 reload：$APP_NAME" pm2 reload ecosystem.config.cjs --only "$APP_NAME" --update-env
   else
-    run "PM2 应用不存在，执行 start：$APP_NAME" pm2 start ecosystem.config.js --only "$APP_NAME" --update-env
+    run "PM2 应用不存在，执行 start：$APP_NAME" pm2 start ecosystem.config.cjs --only "$APP_NAME" --update-env
   fi
 }
 

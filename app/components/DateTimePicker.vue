@@ -156,9 +156,9 @@ function selectMinute(minute: number) {
     </div>
 
     <Drawer v-model:open="show">
-      <DrawerContent>
-        <div class="mx-auto w-full max-w-sm">
-          <DrawerHeader class="pb-2">
+      <DrawerContent class="date-time-drawer overflow-hidden">
+        <div class="date-time-drawer-panel mx-auto flex w-full max-w-sm flex-col overflow-hidden">
+          <DrawerHeader class="shrink-0 pb-2">
             <DrawerTitle>报名截止时间</DrawerTitle>
             <div class="mt-1 rounded-md bg-muted/60 px-3 py-2 text-sm">
               <div class="font-medium">{{ selectedDateText }}</div>
@@ -166,8 +166,8 @@ function selectMinute(minute: number) {
             </div>
           </DrawerHeader>
 
-          <div class="px-4">
-            <Tabs v-model="activeTab" class="w-full">
+          <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2 scrollbar-hide" data-vaul-no-drag>
+            <Tabs v-model="activeTab" class="flex min-h-full w-full flex-col">
               <TabsList class="grid w-full grid-cols-2">
                 <TabsTrigger value="date">
                   日期
@@ -193,7 +193,7 @@ function selectMinute(minute: number) {
                   </Button>
                 </div>
 
-                <div class="date-panel flex h-[292px] items-stretch justify-center overflow-hidden rounded-md border" data-vaul-no-drag>
+                <div class="date-panel flex items-stretch justify-center overflow-hidden rounded-md border" data-vaul-no-drag>
                   <Calendar
                     v-model="tempDate"
                     class="date-calendar h-full w-full"
@@ -237,7 +237,7 @@ function selectMinute(minute: number) {
                   </Button>
                 </div>
 
-                <div class="flex h-[252px] overflow-hidden rounded-md border" data-vaul-no-drag>
+                <div class="time-panel flex overflow-hidden rounded-md border" data-vaul-no-drag>
                   <div class="relative flex-1 overflow-y-auto border-r bg-white text-center scrollbar-hide" data-vaul-no-drag>
                     <div class="sticky top-0 z-10 border-b bg-muted p-2 font-mono text-xs font-medium text-muted-foreground">
                       时
@@ -272,7 +272,7 @@ function selectMinute(minute: number) {
             </Tabs>
           </div>
 
-          <DrawerFooter>
+          <DrawerFooter class="shrink-0 border-t bg-background p-4 pb-[calc(1rem+var(--safe-area-bottom))]">
             <Button @click="onConfirm">
               确认
             </Button>
@@ -289,6 +289,22 @@ function selectMinute(minute: number) {
 </template>
 
 <style scoped>
+.date-time-drawer,
+.date-time-drawer-panel {
+  max-height: calc(100vh - 1rem);
+  max-height: calc(100svh - 1rem);
+}
+
+.date-panel {
+  height: clamp(250px, 42vh, 292px);
+  height: clamp(250px, 42svh, 292px);
+}
+
+.time-panel {
+  height: clamp(210px, 36vh, 252px);
+  height: clamp(210px, 36svh, 252px);
+}
+
 .date-panel :deep([data-slot='calendar']) {
   display: flex;
   height: 100%;
