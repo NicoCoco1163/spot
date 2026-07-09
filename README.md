@@ -11,6 +11,28 @@ bun run dev
 
 本地默认数据库文件为项目根目录下的 `sqlite.db`。
 
+## 打包部署源码
+
+如果线上不使用 Git 拉取代码，可以先在本地生成一个干净的源码 zip：
+
+```bash
+bun run package:clean
+```
+
+默认输出到 `dist/spot-source-时间戳.zip`。压缩包会包含 Git 已跟踪文件，以及未被 `.gitignore` 忽略的未跟踪文件；会排除 `.git`、`node_modules`、`.output`、`.nuxt`、`.env`、`sqlite.db` 等 `.gitignore` 命中的内容。
+
+指定输出路径：
+
+```bash
+bun run package:clean -- --output /tmp/spot-source.zip
+```
+
+预览将被打包的文件：
+
+```bash
+DRY_RUN=1 bun run package:clean
+```
+
 ## 数据库说明
 
 项目使用 SQLite，数据库连接位置由 `DATABASE_URL` 控制：

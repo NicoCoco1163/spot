@@ -10,6 +10,7 @@
     "db:migrate": "bun ./scripts/migrate.ts",
     "deploy": "bash ./scripts/deploy.sh",
     "add:admin": "bun ./scripts/add-admin.ts",
+    "package:clean": "bash ./scripts/package-clean.sh",
     "generate": "nuxt generate",
     "preview": "bun .output/server/index.mjs",
     "postinstall": "nuxt prepare"
