@@ -56,10 +56,10 @@ export default defineNuxtConfig({
         // 覆盖默认的 viewport 设置，添加 viewport-fit=cover
         { name: 'viewport', content: 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover' },
       ],
-      script: [
-        { src: 'https://cdnjs.cloudflare.com/ajax/libs/eruda/3.4.3/eruda.min.js', tagPosition: 'bodyClose' },
-        { innerHTML: 'eruda.init();', tagPosition: 'bodyClose' },
-      ],
+      // script: [
+      //   { src: 'https://cdnjs.cloudflare.com/ajax/libs/eruda/3.4.3/eruda.min.js', tagPosition: 'bodyClose' },
+      //   { innerHTML: 'eruda.init();', tagPosition: 'bodyClose' },
+      // ],
     },
   },
   eslint: {

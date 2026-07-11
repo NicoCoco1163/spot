@@ -141,8 +141,9 @@ async function handleManualRefresh() {
 <template>
   <div class="min-h-screen bg-muted/30 pb-8">
     <header class="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
+      <SloganBanner />
       <div class="mx-auto flex w-full max-w-full items-center gap-2 px-3 py-2">
-        <Button variant="ghost" size="icon" class="h-9 w-9 shrink-0" @click="logout">
+        <Button variant="ghost" size="icon" class="h-8 w-8 shrink-0" @click="logout">
           <LogOut class="h-4 w-4" />
           <span class="sr-only">退出</span>
         </Button>
@@ -152,11 +153,11 @@ async function handleManualRefresh() {
             {{ authStore.user ? (authStore.user.nickname || authStore.user.mobile || '管理员') : '未登录' }}
           </p>
         </div>
-        <Button v-if="authStore.user?.isAdmin" size="sm" class="h-9 shrink-0 px-3" @click="router.push('/a/create')">
+        <Button v-if="authStore.user?.isAdmin" size="sm" class="h-8 shrink-0 px-3" @click="router.push('/a/create')">
           <Plus class="mr-1.5 h-4 w-4" />
           新建
         </Button>
-        <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" :disabled="isRefreshButtonBusy" @click="handleManualRefresh">
+        <Button variant="outline" size="icon" class="h-8 w-8 shrink-0" :disabled="isRefreshButtonBusy" @click="handleManualRefresh">
           <RefreshCcw class="h-4 w-4" :class="{ 'animate-spin': isRefreshButtonBusy }" />
           <span class="sr-only">刷新</span>
         </Button>
@@ -182,13 +183,13 @@ async function handleManualRefresh() {
                 <Search class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   v-model="keywordInput"
-                  class="h-10 pl-9 pr-9"
+                  class="h-8 pl-9 pr-9"
                   placeholder="搜索活动标题或描述"
                 />
                 <button
                   v-if="keywordInput"
                   type="button"
-                  class="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+                  class="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
                   @click="keywordInput = ''; keyword = ''"
                 >
                   <X class="h-3.5 w-3.5" />
@@ -318,11 +319,11 @@ async function handleManualRefresh() {
               </div>
             </div>
             <div class="grid shrink-0 grid-cols-2 gap-2">
-              <Button variant="outline" size="sm" class="h-9 min-w-0 px-2.5" :disabled="page <= 1" @click="page--">
+              <Button variant="outline" size="sm" class="h-8 min-w-0 px-2.5" :disabled="page <= 1" @click="page--">
                 <ChevronLeft class="mr-1 h-4 w-4" />
                 上一页
               </Button>
-              <Button variant="outline" size="sm" class="h-9 min-w-0 px-2.5" :disabled="!pagination.hasMore" @click="page++">
+              <Button variant="outline" size="sm" class="h-8 min-w-0 px-2.5" :disabled="!pagination.hasMore" @click="page++">
                 下一页
                 <ChevronRight class="ml-1 h-4 w-4" />
               </Button>

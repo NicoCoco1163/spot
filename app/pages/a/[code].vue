@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ArrowLeft, ArrowLeftRight, ChevronDown, ClipboardList, Loader2, RefreshCcw, Share2 } from '@lucide/vue'
+import { ArrowLeft, ArrowLeftRight, ChevronDown, ClipboardList, Loader2, RefreshCcw, Share2, Trash2 } from '@lucide/vue'
 import { useClipboard, useIntervalFn } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 import { useAuthStore } from '~/stores/auth'
+import { getOrCreateBrowserDeviceKey } from '~/utils/device'
 import { isMainlandMobile, normalizeMobile } from '~/utils/mobile'
 
 const route = useRoute()
@@ -17,6 +18,10 @@ const participantMobile = ref('')
 const mobileDraft = ref('')
 const isRegistrationEditorOpen = ref(false)
 const registrationFormKey = ref(0)
+const registrationSortMode = ref<'registration' | 'seat'>('registration')
+const operatorOpen = ref(true)
+const adminRegistrationsOpen = ref(true)
+let deadlineRefreshTimer: ReturnType<typeof setTimeout> | null = null
 const activityQuery = computed(() => ({
   mobile: isAdmin.value ? undefined : participantMobile.value || undefined,
 }))
@@ -60,9 +65,12 @@ const { pause } = useIntervalFn(() => {
 
 onUnmounted(() => {
   pause()
+  if (deadlineRefreshTimer)
+    clearTimeout(deadlineRefreshTimer)
 })
 
 const activity = computed(() => data.value?.activity)
+const publicRegistrations = computed(() => data.value?.publicRegistrations || [])
 const seats = computed(() => data.value?.seats || [])
 const phase = computed(() => data.value?.phase || 'registration')
 const registrationCount = computed(() => data.value?.registrationCount || 0)
@@ -84,17 +92,62 @@ const seatByMobile = computed(() => {
   return new Map(seats.value.filter(s => s.mobile).map(s => [s.mobile, s]))
 })
 const adminRegistrationRows = computed(() => {
-  return [...adminRegistrations.value]
-    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+  const rows = [...adminRegistrations.value]
+  rows.sort((a, b) => {
+    if (registrationSortMode.value === 'seat') {
+      const aSeat = seatByMobile.value.get(a.mobile)?.seatNumber ?? Number.MAX_SAFE_INTEGER
+      const bSeat = seatByMobile.value.get(b.mobile)?.seatNumber ?? Number.MAX_SAFE_INTEGER
+      if (aSeat !== bSeat)
+        return aSeat - bSeat
+    }
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  })
+  return rows
     .map((registration, index) => ({
       ...registration,
       index: index + 1,
       seat: seatByMobile.value.get(registration.mobile),
     }))
 })
+const duplicateSongNames = computed(() => {
+  const counts = new Map<string, number>()
+  for (const row of publicRegistrations.value) {
+    const name = row.songName?.trim()
+    if (name)
+      counts.set(name, (counts.get(name) || 0) + 1)
+  }
+  return new Set([...counts.entries()].filter(([, count]) => count > 1).map(([name]) => name))
+})
 const needsRequiredDetails = computed(() => {
   return !!myRegistration.value && (!myRegistration.value.teamName?.trim() || !myRegistration.value.songName?.trim())
 })
+
+function scheduleDeadlineRefresh() {
+  if (deadlineRefreshTimer) {
+    clearTimeout(deadlineRefreshTimer)
+    deadlineRefreshTimer = null
+  }
+  if (!import.meta.client || !activity.value?.deadline)
+    return
+
+  const refreshAt = new Date(activity.value.deadline).getTime() + 1000
+  if (!Number.isFinite(refreshAt) || refreshAt <= Date.now())
+    return
+
+  const scheduleNext = () => {
+    const remaining = refreshAt - Date.now()
+    if (remaining <= 0) {
+      deadlineRefreshTimer = null
+      refresh()
+      return
+    }
+    deadlineRefreshTimer = setTimeout(scheduleNext, Math.min(remaining, 2_147_483_647))
+  }
+
+  scheduleNext()
+}
+
+watch([activityCode, () => activity.value?.deadline], scheduleDeadlineRefresh, { immediate: true })
 
 const statusText = computed(() => {
   if (!activity.value)
@@ -118,10 +171,8 @@ const isOccupying = ref(false)
 
 const showReleaseDialog = ref(false)
 const isReleasing = ref(false)
-
-const showManageDialog = ref(false)
-const isUpdating = ref(false)
-const manageRemark = ref('')
+const pendingDeletion = ref<{ mobile: string, label: string } | null>(null)
+const isDeletingRegistration = ref(false)
 
 const isSwapMode = ref(false)
 const swapFromSeatNumber = ref<number | null>(null)
@@ -142,6 +193,35 @@ function onRegistrationSuccess(mobile: string) {
   rememberMobile(mobile)
   refresh()
   registrationFormKey.value++
+}
+
+function requestDeleteRegistration(mobile: string, label = '该报名') {
+  pendingDeletion.value = { mobile, label }
+}
+
+async function handleDeleteRegistration() {
+  if (!pendingDeletion.value || isDeletingRegistration.value)
+    return
+  isDeletingRegistration.value = true
+  try {
+    await $fetch('/api/activities/registrations/delete', {
+      method: 'POST',
+      body: {
+        activityCode: activityCode.value,
+        mobile: pendingDeletion.value.mobile,
+        deviceKey: isAdmin.value ? undefined : getOrCreateBrowserDeviceKey(),
+      },
+    })
+    toast.success('报名已删除')
+    pendingDeletion.value = null
+    await Promise.all([refresh(), isAdmin.value ? refreshAdminRegistrations() : Promise.resolve()])
+  }
+  catch (err: any) {
+    toast.error(err.data?.message || err.statusMessage || err.message || '删除报名失败')
+  }
+  finally {
+    isDeletingRegistration.value = false
+  }
 }
 
 function handleShare() {
@@ -246,13 +326,6 @@ async function handleSwapSeatClick(seat: any) {
   return true
 }
 
-function openManage(seat: any) {
-  if (!seat.isOccupied || seat.mobile !== participantMobile.value)
-    return
-  manageRemark.value = seat.remark || ''
-  showManageDialog.value = true
-}
-
 async function openOccupy(seat: any) {
   if (await handleSwapSeatClick(seat))
     return
@@ -262,7 +335,7 @@ async function openOccupy(seat: any) {
   }
   if (seat.isOccupied) {
     if (seat.mobile === participantMobile.value) {
-      openManage(seat)
+      toast.info('这是您已抢占的位次，如需更换请先取消抢占')
     }
     else {
       toast.info(`该位次已被 ${seat.registration?.teamName || `尾号${seat.mobile?.slice(-4)}`} 占用`)
@@ -327,32 +400,6 @@ async function handleOccupy() {
   }
 }
 
-async function handleUpdateRemark() {
-  if (!mySeat.value)
-    return
-  isUpdating.value = true
-  try {
-    await $fetch('/api/activities/seats/update-remark', {
-      method: 'POST',
-      body: {
-        activityCode: activityCode.value,
-        seatNumber: mySeat.value.seatNumber,
-        mobile: participantMobile.value,
-        remark: manageRemark.value,
-      },
-    })
-    toast.success('备注已更新')
-    showManageDialog.value = false
-    refresh()
-  }
-  catch (err: any) {
-    toast.error(err.data?.message || err.statusMessage || err.message || '更新失败')
-  }
-  finally {
-    isUpdating.value = false
-  }
-}
-
 async function handleRelease() {
   if (!mySeat.value)
     return
@@ -404,12 +451,18 @@ async function handleExportRegistrationCSV() {
     }
     const header = ['手机号', '队伍名称', '歌曲名称', '歌曲时长', '队员名称', '报名时间', '更新时间'].join(',')
     const rows = [...registrationList]
-      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .sort((a, b) => {
+        const aSeat = seatByMobile.value.get(a.mobile)?.seatNumber ?? Number.MAX_SAFE_INTEGER
+        const bSeat = seatByMobile.value.get(b.mobile)?.seatNumber ?? Number.MAX_SAFE_INTEGER
+        if (aSeat !== bSeat)
+          return aSeat - bSeat
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      })
       .map(r => [
         escapeCsv(r.mobile),
         escapeCsv(r.teamName),
         escapeCsv(r.songName),
-        escapeCsv(r.songDuration),
+        escapeCsv(formatDurationCsv(r.songDuration)),
         escapeCsv(r.members),
         escapeCsv(r.createdAt ? dayjs(r.createdAt).format('YYYY-MM-DD HH:mm:ss') : ''),
         escapeCsv(r.updatedAt ? dayjs(r.updatedAt).format('YYYY-MM-DD HH:mm:ss') : ''),
@@ -437,7 +490,7 @@ function handleExportSeatCSV() {
       escapeCsv(s.mobile),
       escapeCsv(s.registration?.teamName),
       escapeCsv(s.registration?.songName),
-      escapeCsv(s.registration?.songDuration),
+      escapeCsv(formatDurationCsv(s.registration?.songDuration)),
       escapeCsv(s.registration?.members),
       escapeCsv(s.registration?.createdAt ? dayjs(s.registration.createdAt).format('YYYY-MM-DD HH:mm:ss') : ''),
       escapeCsv(s.occupiedAt ? dayjs(s.occupiedAt).format('YYYY-MM-DD HH:mm:ss') : ''),
@@ -447,19 +500,29 @@ function handleExportSeatCSV() {
   toast.success('占位 CSV 已导出')
 }
 
+function padDuration(n: number) {
+  return n.toString().padStart(2, '0')
+}
+
 function formatDuration(seconds: unknown) {
   if (seconds === null || seconds === undefined || seconds === '')
     return '未填写'
   const value = Number(seconds)
   if (!Number.isFinite(value) || value <= 0)
     return '未填写'
-  const minutes = Math.floor(value / 60)
-  const rest = value % 60
-  if (minutes <= 0)
-    return `${rest} 秒`
-  if (rest === 0)
-    return `${minutes} 分钟`
-  return `${minutes} 分 ${rest} 秒`
+  const m = Math.floor(value / 60)
+  const s = value % 60
+  return `${padDuration(m)}:${padDuration(s)}`
+}
+
+// CSV 用：无数据返回空串，统一导出为 MM:SS。
+function formatDurationCsv(seconds: unknown) {
+  const value = Number(seconds)
+  if (!Number.isFinite(value) || value <= 0)
+    return ''
+  const m = Math.floor(value / 60)
+  const s = value % 60
+  return `${padDuration(m)}:${padDuration(s)}`
 }
 
 function goBack() {
@@ -493,8 +556,9 @@ watch(isAdmin, (value) => {
 <template>
   <div class="min-h-screen bg-muted/30 pb-8">
     <header class="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
+      <SloganBanner />
       <div class="mx-auto flex w-full max-w-full items-center gap-2 px-3 py-2">
-        <Button v-if="isAdmin" variant="ghost" size="icon" class="h-9 w-9 shrink-0" @click="goBack">
+        <Button v-if="isAdmin" variant="ghost" size="icon" class="h-8 w-8 shrink-0" @click="goBack">
           <ArrowLeft class="h-4 w-4" />
           <span class="sr-only">返回</span>
         </Button>
@@ -509,7 +573,7 @@ watch(isAdmin, (value) => {
         <Badge :variant="statusVariant">
           {{ statusText }}
         </Badge>
-        <Button variant="outline" size="icon" class="h-9 w-9 shrink-0" :disabled="isRefreshButtonBusy" @click="handleManualRefresh">
+        <Button variant="outline" size="icon" class="h-8 w-8 shrink-0" :disabled="isRefreshButtonBusy" @click="handleManualRefresh">
           <RefreshCcw class="h-4 w-4" :class="{ 'animate-spin': isRefreshButtonBusy }" />
           <span class="sr-only">刷新</span>
         </Button>
@@ -525,12 +589,20 @@ watch(isAdmin, (value) => {
 
           <div class="grid grid-cols-2 gap-2 text-sm">
             <div class="rounded-md bg-muted/50 px-2.5 py-2">
-              <div class="text-xs text-muted-foreground">报名</div>
-              <div class="text-base font-semibold">{{ registrationCount }}</div>
+              <div class="text-xs text-muted-foreground">
+                报名
+              </div>
+              <div class="text-base font-semibold">
+                {{ registrationCount }}
+              </div>
             </div>
             <div class="rounded-md bg-muted/50 px-2.5 py-2">
-              <div class="text-xs text-muted-foreground">占位</div>
-              <div class="text-base font-semibold">{{ occupiedCount }} / {{ seatCapacity }}</div>
+              <div class="text-xs text-muted-foreground">
+                占位
+              </div>
+              <div class="text-base font-semibold">
+                {{ occupiedCount }} / {{ seatCapacity }}
+              </div>
             </div>
           </div>
         </div>
@@ -541,7 +613,9 @@ watch(isAdmin, (value) => {
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span class="text-sm font-medium">手机号</span>
-              <Badge variant="secondary" class="shrink-0">已保存</Badge>
+              <Badge variant="secondary" class="shrink-0">
+                已保存
+              </Badge>
             </div>
             <div class="mt-0.5 truncate font-mono text-sm text-muted-foreground">
               {{ maskedMobile }}
@@ -555,7 +629,9 @@ watch(isAdmin, (value) => {
         <div v-else class="space-y-2 p-3">
           <div>
             <div class="flex items-center justify-between gap-2">
-              <h2 class="text-base font-semibold leading-6">手机号</h2>
+              <h2 class="text-base font-semibold leading-6">
+                手机号
+              </h2>
               <Badge :variant="mobileReady ? 'default' : 'secondary'">
                 {{ mobileReady ? '已保存' : (mobileDirty ? '未保存' : '待保存') }}
               </Badge>
@@ -569,11 +645,11 @@ watch(isAdmin, (value) => {
             type="tel"
             inputmode="tel"
             placeholder="请输入国内手机号"
-            class="h-11"
+            class="h-8"
             maxlength="11"
             :disabled="phase === 'booking' && !!myRegistration && mobileSaved"
           />
-          <Button class="h-10 w-full" :disabled="!mobileDraftValid || mobileSaved" @click="handleSaveMobile">
+          <Button class="h-8 w-full" :disabled="!mobileDraftValid || mobileSaved" @click="handleSaveMobile">
             {{ mobileSaved ? '手机号已保存' : '保存手机号' }}
           </Button>
           <div class="text-xs">
@@ -609,6 +685,8 @@ watch(isAdmin, (value) => {
         :my-registration="myRegistration"
         :current-mobile="participantMobile"
         @success="onRegistrationSuccess"
+        @editing-change="(open) => isRegistrationEditorOpen = open"
+        @delete="requestDeleteRegistration(participantMobile, '我的报名')"
       />
 
       <ActivityBookingPhase
@@ -623,31 +701,84 @@ watch(isAdmin, (value) => {
         @seat-click="openOccupy"
         @registration-success="onRegistrationSuccess"
         @registration-editor-open-change="(open) => isRegistrationEditorOpen = open"
+        @release="showReleaseDialog = true"
       />
+
+      <div v-if="!isAdmin && publicRegistrations.length" class="rounded-lg border bg-background">
+        <div class="space-y-3 p-3">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h2 class="text-base font-semibold">
+                已报路演
+              </h2>
+              <p class="text-sm text-muted-foreground">
+                已报名歌曲与成员
+              </p>
+            </div>
+            <Badge variant="secondary">
+              {{ publicRegistrations.length }} 条
+            </Badge>
+          </div>
+          <div class="space-y-1.5">
+            <div v-for="registration in publicRegistrations" :key="registration.id" class="space-y-1 rounded-md border px-2.5 py-2 text-sm">
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="shrink-0 text-xs text-muted-foreground">歌曲</span>
+                <span class="min-w-0 truncate font-medium" :class="duplicateSongNames.has(registration.songName?.trim()) ? 'bg-yellow-200 text-yellow-900' : ''">
+                  {{ registration.songName || '未填写' }}
+                </span>
+              </div>
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="shrink-0 text-xs text-muted-foreground">成员</span>
+                <span class="min-w-0 truncate text-muted-foreground">
+                  {{ registration.members || '未填写' }}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <div v-if="isAdmin" class="rounded-lg border bg-background">
         <div class="space-y-3 p-3">
           <div class="flex items-start justify-between gap-3">
             <div class="min-w-0">
-              <h2 class="text-base font-semibold leading-6">报名明细</h2>
+              <h2 class="text-base font-semibold leading-6">
+                已报路演
+              </h2>
               <p class="text-sm text-muted-foreground">
                 当前活动所有报名信息
               </p>
             </div>
-            <Badge variant="secondary" class="shrink-0">
-              {{ adminRegistrationRows.length }} 条
-            </Badge>
+            <div class="flex items-center gap-1">
+              <Badge variant="secondary" class="shrink-0">
+                {{ adminRegistrationRows.length }} 条
+              </Badge>
+              <Button variant="ghost" size="icon" class="h-8 w-8" @click="adminRegistrationsOpen = !adminRegistrationsOpen">
+                <ChevronDown class="h-4 w-4 transition-transform" :class="adminRegistrationsOpen ? 'rotate-180' : ''" />
+                <span class="sr-only">切换已报路演</span>
+              </Button>
+            </div>
           </div>
 
-          <div v-if="shouldShowAdminRegistrationSkeleton" class="space-y-2">
+          <div v-if="adminRegistrationsOpen" class="flex items-center gap-2">
+            <span class="text-xs text-muted-foreground">排序</span>
+            <Button size="sm" :variant="registrationSortMode === 'registration' ? 'default' : 'outline'" class="h-8 px-2 text-sm" @click="registrationSortMode = 'registration'">
+              报名顺序
+            </Button>
+            <Button size="sm" :variant="registrationSortMode === 'seat' ? 'default' : 'outline'" class="h-8 px-2 text-sm" @click="registrationSortMode = 'seat'">
+              占位顺序
+            </Button>
+          </div>
+
+          <div v-if="adminRegistrationsOpen && shouldShowAdminRegistrationSkeleton" class="space-y-2">
             <div v-for="i in 3" :key="i" class="h-24 rounded-md bg-muted" />
           </div>
 
-          <div v-else-if="adminRegistrationRows.length === 0" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+          <div v-else-if="adminRegistrationsOpen && adminRegistrationRows.length === 0" class="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
             暂无报名记录
           </div>
 
-          <div v-else class="max-h-[min(70vh,48rem)] space-y-1.5 overflow-y-auto pr-1">
+          <div v-else-if="adminRegistrationsOpen" class="max-h-[min(70vh,48rem)] space-y-1.5 overflow-y-auto pr-1">
             <details
               v-for="registration in adminRegistrationRows"
               :key="registration.id"
@@ -660,12 +791,12 @@ watch(isAdmin, (value) => {
                     <div class="min-w-0 truncate text-sm font-semibold leading-5">
                       {{ registration.teamName || '未填写队伍' }}
                     </div>
-                    <span class="hidden min-w-0 truncate text-xs text-muted-foreground sm:inline">
+                    <span class="min-w-0 truncate text-xs text-muted-foreground" :class="duplicateSongNames.has(registration.songName?.trim()) ? 'bg-yellow-200 text-yellow-900' : ''">
                       {{ registration.songName || '未填歌曲' }}
                     </span>
                   </div>
-                  <div class="mt-0.5 truncate font-mono text-xs leading-4 text-muted-foreground">
-                    {{ registration.mobile }}
+                  <div class="mt-0.5 truncate text-xs leading-4 text-muted-foreground">
+                    {{ registration.members || '未填写成员名称' }}
                   </div>
                 </div>
                 <Badge :variant="registration.seat ? 'default' : 'outline'" class="h-6 shrink-0 px-2">
@@ -677,18 +808,30 @@ watch(isAdmin, (value) => {
               <div class="border-t px-2.5 py-2">
                 <div class="grid grid-cols-2 gap-1.5 text-sm">
                   <div class="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
-                    <div class="text-xs leading-4 text-muted-foreground">歌曲</div>
-                    <div class="truncate font-medium leading-5">{{ registration.songName || '未填写' }}</div>
+                    <div class="text-xs leading-4 text-muted-foreground">
+                      歌曲
+                    </div>
+                    <div class="truncate font-medium leading-5">
+                      <span :class="duplicateSongNames.has(registration.songName?.trim()) ? 'bg-yellow-200 text-yellow-900' : ''">{{ registration.songName || '未填写' }}</span>
+                    </div>
                   </div>
                   <div class="min-w-0 rounded-md bg-muted/40 px-2 py-1.5">
-                    <div class="text-xs leading-4 text-muted-foreground">时长</div>
-                    <div class="truncate font-medium leading-5">{{ formatDuration(registration.songDuration) }}</div>
+                    <div class="text-xs leading-4 text-muted-foreground">
+                      时长
+                    </div>
+                    <div class="truncate font-medium leading-5">
+                      {{ formatDuration(registration.songDuration) }}
+                    </div>
                   </div>
                 </div>
 
                 <div class="mt-1.5 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
-                  <div class="text-xs leading-4 text-muted-foreground">队员</div>
-                  <div class="whitespace-pre-wrap break-words leading-5">{{ registration.members || '未填写' }}</div>
+                  <div class="text-xs leading-4 text-muted-foreground">
+                    队员
+                  </div>
+                  <div class="whitespace-pre-wrap break-words leading-5">
+                    {{ registration.members || '未填写' }}
+                  </div>
                 </div>
 
                 <div class="mt-1.5 grid grid-cols-2 gap-2 text-xs leading-5 text-muted-foreground">
@@ -699,6 +842,10 @@ watch(isAdmin, (value) => {
                     更新 {{ registration.updatedAt ? dayjs(registration.updatedAt).format('MM-DD HH:mm') : '-' }}
                   </div>
                 </div>
+                <Button variant="destructive" size="sm" class="mt-2 h-8 w-full" @click="requestDeleteRegistration(registration.mobile, `${registration.teamName || '该队伍'}的报名`)">
+                  <Trash2 class="mr-1.5 h-3.5 w-3.5" />
+                  删除报名
+                </Button>
               </div>
             </details>
           </div>
@@ -721,136 +868,159 @@ watch(isAdmin, (value) => {
       />
 
       <div v-if="isAdmin" class="rounded-lg border bg-background">
-        <div class="space-y-3 p-3">
-          <div class="flex items-start justify-between gap-3">
+        <details :open="operatorOpen" class="group">
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden" @click.prevent="operatorOpen = !operatorOpen">
             <div class="min-w-0">
-              <h2 class="text-base font-semibold leading-6">操作员管理</h2>
+              <h2 class="text-base font-semibold leading-6">
+                操作员管理
+              </h2>
               <p class="text-sm text-muted-foreground">
                 当前活动的基础操作和现场数据
               </p>
             </div>
-            <Badge variant="outline" class="shrink-0">
-              管理员
-            </Badge>
-          </div>
-
-          <div class="grid grid-cols-3 gap-2">
-            <div class="rounded-md bg-muted/50 px-2 py-2">
-              <div class="text-xs text-muted-foreground">阶段</div>
-              <div class="truncate text-sm font-medium">{{ phase === 'registration' ? '报名' : '抢位' }}</div>
-            </div>
-            <div class="rounded-md bg-muted/50 px-2 py-2">
-              <div class="text-xs text-muted-foreground">报名</div>
-              <div class="text-sm font-medium">{{ registrationCount }}</div>
-            </div>
-            <div class="rounded-md bg-muted/50 px-2 py-2">
-              <div class="text-xs text-muted-foreground">占位</div>
-              <div class="text-sm font-medium">{{ occupiedCount }}/{{ seatCapacity }}</div>
-            </div>
-          </div>
-
-          <div class="rounded-lg border">
-            <div class="grid gap-3 p-3">
-              <div class="min-w-0">
-                <div class="text-sm font-medium">活动链接</div>
-                <div class="mt-1 truncate rounded-md bg-muted/50 px-2 py-1.5 font-mono text-xs text-muted-foreground">
-                  /a/{{ activity.code }}
+            <ChevronDown class="h-4 w-4 shrink-0 text-muted-foreground transition-transform" :class="operatorOpen ? 'rotate-180' : ''" />
+          </summary>
+          <div v-if="operatorOpen" class="space-y-3 px-3 pb-3">
+            <div class="grid grid-cols-3 gap-2">
+              <div class="rounded-md bg-muted/50 px-2 py-2">
+                <div class="text-xs text-muted-foreground">
+                  阶段
+                </div>
+                <div class="truncate text-sm font-medium">
+                  {{ phase === 'registration' ? '报名' : '抢位' }}
                 </div>
               </div>
-              <div class="grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm" class="w-full" @click="handleShare">
-                  <Share2 class="mr-2 h-4 w-4" />
-                  复制链接
+              <div class="rounded-md bg-muted/50 px-2 py-2">
+                <div class="text-xs text-muted-foreground">
+                  报名
+                </div>
+                <div class="text-sm font-medium">
+                  {{ registrationCount }}
+                </div>
+              </div>
+              <div class="rounded-md bg-muted/50 px-2 py-2">
+                <div class="text-xs text-muted-foreground">
+                  占位
+                </div>
+                <div class="text-sm font-medium">
+                  {{ occupiedCount }}/{{ seatCapacity }}
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-lg border">
+              <div class="grid gap-3 p-3">
+                <div class="min-w-0">
+                  <div class="text-sm font-medium">
+                    活动链接
+                  </div>
+                  <div class="mt-1 truncate rounded-md bg-muted/50 px-2 py-1.5 font-mono text-xs text-muted-foreground">
+                    /a/{{ activity.code }}
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" class="w-full" @click="handleShare">
+                    <Share2 class="mr-2 h-4 w-4" />
+                    复制链接
+                  </Button>
+                  <Button variant="outline" size="sm" class="w-full" @click="goEdit">
+                    编辑活动
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div class="grid gap-3 p-3">
+                <div class="grid gap-1">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-sm font-medium">
+                      报名数据
+                    </div>
+                    <Badge variant="secondary" class="shrink-0">
+                      CSV
+                    </Badge>
+                  </div>
+                  <div class="text-xs leading-5 text-muted-foreground">
+                    已占位记录按位次排列，未占位记录按报名时间排列
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="w-full"
+                  :disabled="registrationCount === 0"
+                  @click="handleExportRegistrationCSV"
+                >
+                  <ClipboardList class="mr-2 h-4 w-4" />
+                  导出报名 CSV
                 </Button>
-                <Button variant="outline" size="sm" class="w-full" @click="goEdit">
-                  编辑活动
+              </div>
+
+              <Separator v-if="phase === 'booking'" />
+
+              <div v-if="phase === 'booking'" class="grid gap-3 p-3">
+                <div class="grid gap-1">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-sm font-medium">
+                      占位数据
+                    </div>
+                    <Badge variant="secondary" class="shrink-0">
+                      CSV
+                    </Badge>
+                  </div>
+                  <div class="text-xs leading-5 text-muted-foreground">
+                    导出已占位记录，包含位次、手机号、队伍、歌曲和占位时间
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="w-full"
+                  :disabled="phase !== 'booking' || occupiedCount === 0"
+                  @click="handleExportSeatCSV"
+                >
+                  <ClipboardList class="mr-2 h-4 w-4" />
+                  导出占位 CSV
                 </Button>
               </div>
-            </div>
 
-            <Separator />
+              <Separator v-if="phase === 'booking'" />
 
-            <div v-if="phase === 'registration'" class="grid gap-3 p-3">
-              <div class="grid gap-1">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="text-sm font-medium">报名数据</div>
-                  <Badge variant="secondary" class="shrink-0">
-                    CSV
-                  </Badge>
+              <div v-if="phase === 'booking'" class="grid gap-3 p-3">
+                <div class="grid gap-1">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-sm font-medium">
+                      位次调整
+                    </div>
+                    <Badge :variant="isSwapMode ? 'default' : 'secondary'" class="shrink-0">
+                      {{ isSwapMode ? '进行中' : '未开启' }}
+                    </Badge>
+                  </div>
+                  <div class="text-xs leading-5 text-muted-foreground">
+                    抢位阶段可选择两个已占用位次并交换报名信息
+                  </div>
                 </div>
-                <div class="text-xs leading-5 text-muted-foreground">
-                  导出当前报名记录，包含手机号、队伍、歌曲和报名时间
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="w-full"
+                  :disabled="phase !== 'booking' || isSwapping || occupiedCount < 2"
+                  @click="toggleSwapMode"
+                >
+                  <ArrowLeftRight class="mr-2 h-4 w-4" />
+                  {{ isSwapMode ? '退出换位模式' : '进入换位模式' }}
+                </Button>
+                <div v-if="phase !== 'booking'" class="text-xs text-muted-foreground">
+                  报名截止后才进入抢位阶段，届时可调整已占用位次。
                 </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                class="w-full"
-                :disabled="registrationCount === 0"
-                @click="handleExportRegistrationCSV"
-              >
-                <ClipboardList class="mr-2 h-4 w-4" />
-                导出报名 CSV
-              </Button>
-            </div>
-
-            <div v-else class="grid gap-3 p-3">
-              <div class="grid gap-1">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="text-sm font-medium">占位数据</div>
-                  <Badge variant="secondary" class="shrink-0">
-                    CSV
-                  </Badge>
+                <div v-else-if="occupiedCount < 2" class="text-xs text-muted-foreground">
+                  至少需要 2 个已占用位次才可以交换。
                 </div>
-                <div class="text-xs leading-5 text-muted-foreground">
-                  导出已占位记录，包含位次、手机号、队伍、歌曲和占位时间
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                class="w-full"
-                :disabled="phase !== 'booking' || occupiedCount === 0"
-                @click="handleExportSeatCSV"
-              >
-                <ClipboardList class="mr-2 h-4 w-4" />
-                导出占位 CSV
-              </Button>
-            </div>
-
-            <Separator v-if="phase === 'booking'" />
-
-            <div v-if="phase === 'booking'" class="grid gap-3 p-3">
-              <div class="grid gap-1">
-                <div class="flex items-center justify-between gap-2">
-                  <div class="text-sm font-medium">位次调整</div>
-                  <Badge :variant="isSwapMode ? 'default' : 'secondary'" class="shrink-0">
-                    {{ isSwapMode ? '进行中' : '未开启' }}
-                  </Badge>
-                </div>
-                <div class="text-xs leading-5 text-muted-foreground">
-                  抢位阶段可选择两个已占用位次并交换报名信息
-                </div>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                class="w-full"
-                :disabled="phase !== 'booking' || isSwapping || occupiedCount < 2"
-                @click="toggleSwapMode"
-              >
-                <ArrowLeftRight class="mr-2 h-4 w-4" />
-                {{ isSwapMode ? '退出换位模式' : '进入换位模式' }}
-              </Button>
-              <div v-if="phase !== 'booking'" class="text-xs text-muted-foreground">
-                报名截止后才进入抢位阶段，届时可调整已占用位次。
-              </div>
-              <div v-else-if="occupiedCount < 2" class="text-xs text-muted-foreground">
-                至少需要 2 个已占用位次才可以交换。
               </div>
             </div>
           </div>
-        </div>
+        </details>
       </div>
 
       <div v-if="isSwapMode" class="rounded-lg border bg-background px-3 py-2 text-sm">
@@ -885,34 +1055,6 @@ watch(isAdmin, (value) => {
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="showManageDialog">
-      <DialogContent class="max-w-[calc(100%-1.5rem)]">
-        <DialogHeader>
-          <DialogTitle>管理 {{ mySeat?.seatNumber }} 号位次</DialogTitle>
-          <DialogDescription>
-            可修改备注，报名资料请在抢位资格区域修改
-          </DialogDescription>
-        </DialogHeader>
-        <div class="space-y-2">
-          <Label>备注</Label>
-          <Input v-model="manageRemark" placeholder="可选备注" />
-        </div>
-        <DialogFooter class="grid gap-2">
-          <Button variant="destructive" class="w-full" @click="() => { showManageDialog = false; showReleaseDialog = true }">
-            释放位次
-          </Button>
-          <div class="grid grid-cols-2 gap-2">
-            <Button variant="outline" class="w-full" @click="showManageDialog = false">
-              取消
-            </Button>
-            <Button class="w-full" :disabled="isUpdating" @click="handleUpdateRemark">
-              {{ isUpdating ? '保存中...' : '保存' }}
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-
     <Dialog v-model:open="showReleaseDialog">
       <DialogContent class="max-w-[calc(100%-1.5rem)]">
         <DialogHeader>
@@ -927,6 +1069,25 @@ watch(isAdmin, (value) => {
           </Button>
           <Button variant="destructive" :disabled="isReleasing" @click="handleRelease">
             {{ isReleasing ? '处理中...' : '确认释放' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="!!pendingDeletion" @update:open="open => !open && (pendingDeletion = null)">
+      <DialogContent class="max-w-[calc(100%-1.5rem)]">
+        <DialogHeader>
+          <DialogTitle>删除报名</DialogTitle>
+          <DialogDescription>
+            确定删除{{ pendingDeletion?.label }}吗？{{ phase === 'booking' && isAdmin ? '关联的占位信息也会一起删除。' : '删除后不可恢复。' }}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter class="grid grid-cols-2 gap-2">
+          <Button variant="outline" :disabled="isDeletingRegistration" @click="pendingDeletion = null">
+            取消
+          </Button>
+          <Button variant="destructive" :disabled="isDeletingRegistration" @click="handleDeleteRegistration">
+            {{ isDeletingRegistration ? '删除中...' : '确认删除' }}
           </Button>
         </DialogFooter>
       </DialogContent>

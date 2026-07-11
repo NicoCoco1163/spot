@@ -124,7 +124,7 @@ const onSubmit = form.handleSubmit(async (values) => {
     <div v-if="activity">
       <header class="sticky top-0 z-40 border-b bg-background/95 backdrop-blur">
         <div class="mx-auto flex w-full max-w-full items-center gap-2 px-3 py-2">
-          <Button variant="ghost" size="icon" class="h-9 w-9 shrink-0" @click="router.back()">
+          <Button variant="ghost" size="icon" class="h-8 w-8 shrink-0" @click="router.back()">
             <ArrowLeft class="h-4 w-4" />
             <span class="sr-only">返回</span>
           </Button>
@@ -228,7 +228,7 @@ const onSubmit = form.handleSubmit(async (values) => {
                   type="button"
                   size="sm"
                   variant="outline"
-                  class="h-9 shrink-0"
+                  class="h-8 shrink-0"
                   :disabled="isAdvancing"
                   @click="openAdvanceConfirm"
                 >
@@ -239,7 +239,7 @@ const onSubmit = form.handleSubmit(async (values) => {
             </div>
 
             <div class="pt-2">
-              <Button type="submit" class="h-10 w-full" :disabled="isSubmitting || isAdvancing">
+              <Button type="submit" class="h-8 w-full" :disabled="isSubmitting || isAdvancing">
                 <Loader2 v-if="isSubmitting" class="mr-2 h-4 w-4 animate-spin" />
                 {{ isSubmitting ? '保存中' : '保存修改' }}
               </Button>

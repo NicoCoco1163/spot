@@ -75,21 +75,24 @@ async function handleLogout() {
 <template>
   <div class="min-h-screen bg-gray-50/50 pb-12">
     <!-- Header -->
-    <div class="sticky top-0 z-50 bg-[#1c1c1e] backdrop-blur-xl text-white px-5 py-4 flex items-center justify-between shadow-2xl rounded-b-4xl border-b border-white/5 overflow-hidden mb-4">
+    <div class="sticky top-0 z-50 mb-4 overflow-hidden rounded-b-4xl border-b border-white/5 bg-[#1c1c1e] text-white shadow-2xl backdrop-blur-xl">
+      <SloganBanner />
       <!-- Header Background Decoration -->
       <div class="absolute -right-4 -top-10 h-24 w-24 rounded-full bg-white/5 blur-2xl pointer-events-none" />
       <div class="absolute -left-4 -top-4 h-20 w-20 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
 
-      <Button
-        variant="ghost"
-        size="icon"
-        class="-ml-2 h-8 w-8 text-white/60 hover:text-white hover:bg-white/10 rounded-full relative z-10 transition-all duration-300"
-        @click="router.back()"
-      >
-        <ChevronLeft class="w-6 h-6" />
-      </Button>
-      <span class="font-bold text-lg tracking-wide relative z-10">个人中心</span>
-      <div class="w-8" />
+      <div class="relative flex items-center justify-between px-5 py-4">
+        <Button
+          variant="ghost"
+          size="icon"
+          class="-ml-2 h-8 w-8 text-white/60 hover:text-white hover:bg-white/10 rounded-full relative z-10 transition-all duration-300"
+          @click="router.back()"
+        >
+          <ChevronLeft class="w-6 h-6" />
+        </Button>
+        <span class="font-bold text-lg tracking-wide relative z-10">个人中心</span>
+        <div class="w-8" />
+      </div>
     </div>
 
     <div class="px-4 pb-4 max-w-md mx-auto space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -126,12 +129,12 @@ async function handleLogout() {
               <div class="flex gap-2">
                 <Input
                   v-model="nickname"
-                  class="h-9 bg-gray-50/50 border-gray-200 focus:bg-white focus:ring-2 focus:ring-gray-200 focus:border-gray-300 transition-all text-sm"
+                  class="h-8 bg-gray-50/50 border-gray-200 focus:bg-white focus:ring-2 focus:ring-gray-200 focus:border-gray-300 transition-all text-sm"
                   placeholder="请输入昵称"
                 />
                 <Button
                   :disabled="isLoading || nickname === authStore.user?.nickname"
-                  class="h-9 px-4 font-medium shadow-none text-xs"
+                  class="h-8 px-4 font-medium shadow-none text-sm"
                   :class="nickname === authStore.user?.nickname ? 'bg-gray-100 text-gray-400 hover:bg-gray-100' : 'bg-black text-white hover:bg-gray-800'"
                   @click="handleUpdateProfile"
                 >
@@ -168,7 +171,7 @@ async function handleLogout() {
                   v-if="authStore.user?.openid"
                   variant="outline"
                   size="sm"
-                  class="h-7 text-xs border-gray-200 text-gray-500 hover:text-red-500 hover:bg-red-50 hover:border-red-100"
+                  class="h-8 text-sm border-gray-200 text-gray-500 hover:text-red-500 hover:bg-red-50 hover:border-red-100"
                   @click="handleUnbindWechat"
                 >
                   解除绑定
@@ -182,7 +185,7 @@ async function handleLogout() {
       <!-- Logout Button -->
       <Button
         variant="outline"
-        class="w-full h-11 rounded-xl text-red-500 bg-white hover:bg-red-50 hover:text-red-600 text-sm font-medium transition-all active:scale-[0.99]"
+        class="w-full h-8 rounded-xl text-sm text-red-500 bg-white hover:bg-red-50 hover:text-red-600 font-medium transition-all active:scale-[0.99]"
         @click="handleLogout"
       >
         退出登录

@@ -74,7 +74,6 @@ export default defineEventHandler(async (event) => {
     remark: activitySeats.remark,
     occupiedAt: activitySeats.occupiedAt,
     registration: {
-      mobile: registrations.mobile,
       teamName: registrations.teamName,
       songName: registrations.songName,
       songDuration: registrations.songDuration,
@@ -89,9 +88,11 @@ export default defineEventHandler(async (event) => {
     .all()
 
   // 整理数据结构：如果是未被占用的座位，user 字段应为 null
+  const isAdmin = !!event.context.user?.isAdmin
   const formattedSeats = seats.map(seat => ({
     ...seat,
     isOccupied: !!seat.isOccupied, // 转为 boolean
+    mobile: isAdmin || seat.mobile === mobile ? seat.mobile : null,
     registration: seat.isOccupied ? seat.registration : null,
   }))
 
@@ -119,6 +120,21 @@ export default defineEventHandler(async (event) => {
     ? formattedSeats.find(seat => seat.mobile === mobile) || null
     : null
 
+  // 公开报名列表不返回手机号，供游客查看活动报名情况。
+  const publicRegistrations = db.select({
+    id: registrations.id,
+    teamName: registrations.teamName,
+    songName: registrations.songName,
+    songDuration: registrations.songDuration,
+    members: registrations.members,
+    createdAt: registrations.createdAt,
+    updatedAt: registrations.updatedAt,
+  })
+    .from(registrations)
+    .where(eq(registrations.activityId, activityId))
+    .orderBy(asc(registrations.createdAt))
+    .all()
+
   return {
     activity: publicActivity,
     seats: formattedSeats,
@@ -126,5 +142,6 @@ export default defineEventHandler(async (event) => {
     registrationCount,
     myRegistration,
     mySeat,
+    publicRegistrations,
   }
 })

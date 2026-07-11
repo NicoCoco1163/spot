@@ -14,6 +14,7 @@ const emit = defineEmits<{
   seatClick: [seat: any]
   registrationSuccess: [mobile: string]
   registrationEditorOpenChange: [open: boolean]
+  release: []
 }>()
 
 const dayjs = useDayjs()
@@ -24,6 +25,15 @@ const needsRequiredDetails = computed(() => {
 
 watch(showEditRegistrationDialog, open => emit('registrationEditorOpenChange', open))
 
+function formatDuration(seconds: unknown) {
+  const value = Number(seconds)
+  if (!Number.isFinite(value) || value <= 0)
+    return ''
+  const m = Math.floor(value / 60)
+  const s = value % 60
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+}
+
 function handleRegistrationSuccess(mobile: string) {
   showEditRegistrationDialog.value = false
   emit('registrationSuccess', mobile)
@@ -32,7 +42,7 @@ function handleRegistrationSuccess(mobile: string) {
 
 <template>
   <Card v-if="!props.adminMode && props.myRegistration">
-    <CardHeader class="px-3 pb-2 pt-3">
+    <CardHeader class="px-3 pt-3">
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0">
           <CardTitle class="text-base">
@@ -53,9 +63,6 @@ function handleRegistrationSuccess(mobile: string) {
             </div>
             <div class="mt-0.5 truncate text-xs text-muted-foreground">
               {{ props.myRegistration.songName || '未填写歌曲名称' }}
-              <span v-if="props.myRegistration.songDuration">
-                · {{ props.myRegistration.songDuration }} 秒
-              </span>
             </div>
           </div>
           <div v-if="props.mySeat" class="shrink-0 rounded-md bg-background px-2 py-1 text-xs font-medium">
@@ -65,6 +72,15 @@ function handleRegistrationSuccess(mobile: string) {
       </div>
       <Button variant="outline" size="sm" class="h-8 w-full" @click="showEditRegistrationDialog = true">
         {{ needsRequiredDetails ? '补齐抢位资料' : '修改报名资料' }}
+      </Button>
+      <Button
+        v-if="props.mySeat"
+        variant="destructive"
+        size="sm"
+        class="h-8 w-full"
+        @click="emit('release')"
+      >
+        取消抢占（{{ props.mySeat.seatNumber }} 号）
       </Button>
     </CardContent>
   </Card>
@@ -80,7 +96,9 @@ function handleRegistrationSuccess(mobile: string) {
   <div>
     <h2 class="mb-2 flex items-center justify-between gap-2 px-1 text-base font-semibold tracking-tight text-foreground">
       <span>表演顺序</span>
-      <Badge v-if="!props.adminMode && props.mySeat" variant="secondary" class="shrink-0">我的位次 {{ props.mySeat.seatNumber }} 号</Badge>
+      <Badge v-if="!props.adminMode && props.mySeat" variant="secondary" class="shrink-0">
+        我的位次 {{ props.mySeat.seatNumber }} 号
+      </Badge>
     </h2>
 
     <div class="grid grid-cols-3 gap-1.5">
@@ -108,9 +126,9 @@ function handleRegistrationSuccess(mobile: string) {
         >
           <div class="flex w-full items-start justify-between">
             <span class="font-mono text-sm font-bold leading-none tabular-nums transition-opacity" :class="seat.isOccupied && !props.adminMode && seat.mobile === props.currentMobile ? 'text-white/40' : 'opacity-40 group-hover:opacity-60'">{{ seat.seatNumber }}</span>
-            <span v-if="seat.isOccupied && seat.occupiedAt" class="text-[10px] font-mono leading-none" :class="!props.adminMode && seat.mobile === props.currentMobile ? 'text-white/40' : 'text-gray-400'">
+            <!-- <span v-if="seat.isOccupied && seat.occupiedAt" class="text-[10px] font-mono leading-none" :class="!props.adminMode && seat.mobile === props.currentMobile ? 'text-white/40' : 'text-gray-400'">
               {{ dayjs(seat.occupiedAt).format('HH:mm') }}
-            </span>
+            </span> -->
           </div>
 
           <div class="w-full min-w-0">
@@ -130,7 +148,7 @@ function handleRegistrationSuccess(mobile: string) {
   </div>
 
   <Dialog v-if="!props.adminMode" v-model:open="showEditRegistrationDialog">
-    <DialogContent class="max-h-[85vh] max-w-[calc(100%-1.5rem)] overflow-y-auto" @open-auto-focus.prevent>
+    <DialogScrollContent class="max-w-[calc(100%-1.5rem)]" @open-auto-focus.prevent>
       <DialogHeader>
         <DialogTitle>修改报名信息</DialogTitle>
         <DialogDescription>
@@ -144,6 +162,6 @@ function handleRegistrationSuccess(mobile: string) {
         require-details
         @success="handleRegistrationSuccess"
       />
-    </DialogContent>
+    </DialogScrollContent>
   </Dialog>
 </template>

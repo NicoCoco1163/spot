@@ -147,7 +147,7 @@ function selectMinute(minute: number) {
 <template>
   <div>
     <div
-      class="flex items-center border rounded-md px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 transition-colors bg-white"
+      class="flex h-8 items-center border rounded-md px-3 py-1.5 text-sm cursor-pointer hover:bg-gray-50 transition-colors bg-white"
       @click="open"
     >
       <span class="font-mono tabular-nums" :class="displayValue ? 'text-foreground' : 'text-muted-foreground'">
@@ -161,13 +161,17 @@ function selectMinute(minute: number) {
           <DrawerHeader class="shrink-0 pb-2">
             <DrawerTitle>报名截止时间</DrawerTitle>
             <div class="mt-1 rounded-md bg-muted/60 px-3 py-2 text-sm">
-              <div class="font-medium">{{ selectedDateText }}</div>
-              <div class="font-mono text-muted-foreground">{{ selectedTimeText }}</div>
+              <div class="font-medium">
+                {{ selectedDateText }}
+              </div>
+              <div class="font-mono text-muted-foreground">
+                {{ selectedTimeText }}
+              </div>
             </div>
           </DrawerHeader>
 
           <div class="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-2 scrollbar-hide" data-vaul-no-drag>
-            <Tabs v-model="activeTab" class="flex min-h-full w-full flex-col">
+            <Tabs v-model="activeTab" class="gap-3 flex min-h-full w-full flex-col">
               <TabsList class="grid w-full grid-cols-2">
                 <TabsTrigger value="date">
                   日期
@@ -177,7 +181,7 @@ function selectMinute(minute: number) {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="date" class="mt-3 space-y-3">
+              <TabsContent value="date" class="space-y-3">
                 <div class="grid grid-cols-3 gap-2">
                   <Button
                     v-for="item in quickDateOptions"
@@ -203,12 +207,12 @@ function selectMinute(minute: number) {
                   />
                 </div>
 
-                <Button type="button" variant="outline" class="h-9 w-full" @click="activeTab = 'time'">
+                <Button type="button" variant="outline" class="h-8 w-full" @click="activeTab = 'time'">
                   继续选择时间
                 </Button>
               </TabsContent>
 
-              <TabsContent value="time" class="mt-3 space-y-3">
+              <TabsContent value="time" class="space-y-3">
                 <div class="grid grid-cols-4 gap-2">
                   <Button
                     v-for="item in timePresets"

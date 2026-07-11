@@ -32,10 +32,12 @@ print_help() {
 默认会包含：
   - Git 已跟踪文件
   - 未跟踪但没有被 .gitignore 忽略的文件
+  - .output 构建产物目录（若存在）
 
 默认会排除：
   - .git
-  - .gitignore 命中的内容，例如 node_modules、.output、.nuxt、.env、sqlite.db
+  - .gitignore 命中的内容，例如 node_modules、.nuxt、.env、sqlite.db
+    （.output 虽被 .gitignore 忽略，但会额外打包）
 
 用法：
   bun run package:clean
@@ -118,6 +120,15 @@ main() {
   log "生成文件清单"
   git ls-files -z --cached --others --exclude-standard > "$MANIFEST"
 
+  local has_output=0
+  local output_count=0
+  if [[ -d "$ROOT_DIR/.output" ]]; then
+    has_output=1
+    output_count="$(find "$ROOT_DIR/.output" -type f | wc -l | tr -d ' ')"
+  else
+    warn ".output 目录不存在，将只打包源码（如需包含构建产物，请先执行 bun run build）"
+  fi
+
   local file_count
   file_count="$(git ls-files --cached --others --exclude-standard | wc -l | tr -d ' ')"
   [[ "$file_count" != "0" ]] || fail "没有可打包文件"
@@ -126,16 +137,25 @@ main() {
   printf '  ROOT_DIR=%s\n' "$ROOT_DIR"
   printf '  OUTPUT=%s\n' "$OUTPUT"
   printf '  FILES=%s\n' "$file_count"
+  printf '  OUTPUT_DIR_FILES=%s\n' "$output_count"
   printf '  DRY_RUN=%s\n' "$DRY_RUN"
 
   if [[ "$DRY_RUN" == "1" ]]; then
     warn "DRY_RUN=1，仅展示前 120 个将被打包的文件"
     git ls-files --cached --others --exclude-standard | sed -n '1,120p'
+    if [[ "$has_output" == "1" ]]; then
+      warn ".output/ 整个目录也会被打包（含 $output_count 个文件）"
+    fi
     exit 0
   fi
 
   log "复制干净文件到临时目录"
   rsync -a --files-from="$MANIFEST" --from0 ./ "$STAGING_DIR/"
+
+  if [[ "$has_output" == "1" ]]; then
+    log "复制 .output 构建产物"
+    rsync -a "$ROOT_DIR/.output" "$STAGING_DIR/"
+  fi
 
   log "生成 zip"
   rm -f "$OUTPUT"
@@ -150,7 +170,10 @@ main() {
   ok "打包完成"
   ok "输出文件：$OUTPUT"
   ok "文件大小：$size"
-  ok "已排除：.git、.gitignore 命中的文件和目录"
+  if [[ "$has_output" == "1" ]]; then
+    ok "已包含：源码 + .output 构建产物（$output_count 个文件）"
+  fi
+  ok "已排除：.git、.gitignore 命中的文件和目录（.output 除外）"
 }
 
 main "$@"

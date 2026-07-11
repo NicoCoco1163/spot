@@ -180,7 +180,7 @@ const onSubmit = form.handleSubmit(async (values) => {
               @verified="handleAltchaVerified"
             />
 
-            <div v-else class="h-9 rounded-md bg-gray-100 animate-pulse" />
+            <div v-else class="h-8 rounded-md bg-gray-100 animate-pulse" />
           </ClientOnly>
 
           <p v-if="altchaError" class="text-xs text-red-500">
@@ -217,7 +217,7 @@ const onSubmit = form.handleSubmit(async (values) => {
   --altcha-color-base: #F6F7FB;
   --altcha-color-text: #4E5969;
   --altcha-color-border: #E3E6EB;
-  --altcha-color-border-focus: #2764FF;
+  --altcha-color-border-focus: var(--primary);
   --altcha-max-width: 100%;
   --altcha-border-width: 1px;
   --altcha-border-radius: 8px;
@@ -246,7 +246,7 @@ const onSubmit = form.handleSubmit(async (values) => {
     input {
       width: 16px;
       height: 16px;
-      border: 2px solid #2764FF;
+      border: 2px solid var(--primary);
       border-radius: 100%;
     }
   }
