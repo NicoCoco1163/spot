@@ -70,7 +70,7 @@ const onSubmit = form.handleSubmit(async (values) => {
         <div class="border-b p-3">
           <h2 class="text-base font-semibold leading-6">活动信息</h2>
           <p class="text-sm text-muted-foreground">
-            游客通过活动链接访问详情页，报名截止后进入抢位阶段。
+            游客通过活动链接访问详情页，报名截止后进入占位阶段。
           </p>
         </div>
 
@@ -106,7 +106,7 @@ const onSubmit = form.handleSubmit(async (values) => {
                 <DateTimePicker v-bind="componentField" placeholder="选择报名截止时间" />
               </FormControl>
               <FormDescription>
-                截止前可报名；截止后只允许已报名手机号抢位，位次数等于报名人数。
+                截止前可报名；截止后只允许已报名手机号占位，位次数等于报名人数。
               </FormDescription>
               <FormMessage />
             </FormItem>

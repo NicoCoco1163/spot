@@ -36,7 +36,7 @@ export default defineEventHandler(async (event) => {
   }
 
   if (getActivityPhase(currentActivity) !== 'registration') {
-    throw createError({ statusCode: 400, message: '当前活动已在抢位阶段' })
+    throw createError({ statusCode: 400, message: '当前活动已在占位阶段' })
   }
 
   const registrationCountResult = db.select({ count: count() })

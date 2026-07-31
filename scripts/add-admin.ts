@@ -1,6 +1,5 @@
-import process from 'node:process'
+import process, { stdin as input, stdout as output } from 'node:process'
 import { createInterface } from 'node:readline/promises'
-import { stdin as input, stdout as output } from 'node:process'
 import { Database } from 'bun:sqlite'
 import { config } from 'dotenv'
 import { isMainlandMobile, normalizeMobile } from '../app/utils/mobile'
@@ -10,14 +9,14 @@ config()
 const DEFAULT_PASSWORD = 'admin123'
 const databaseUrl = process.env.DATABASE_URL || 'sqlite.db'
 
-type Args = {
+interface Args {
   name?: string
   mobile?: string
   password?: string
   yes?: boolean
 }
 
-type UserRow = {
+interface UserRow {
   id: number
   mobile: string | null
   nickname: string | null
@@ -123,7 +122,7 @@ async function confirmUpdate(rl: ReturnType<typeof createInterface>, args: Args,
 
 function ensureUsersTable(sqlite: Database) {
   const table = sqlite
-    .query<{ name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'users'")
+    .query<{ name: string }, []>('SELECT name FROM sqlite_master WHERE type = \'table\' AND name = \'users\'')
     .get()
 
   if (!table) {

@@ -7,7 +7,7 @@ export type ActivityPhase = 'registration' | 'booking'
 /**
  * 判断当前活动阶段
  * @param activity 活动对象
- * @returns 'registration' - 报名阶段 | 'booking' - 抢位阶段
+ * @returns 'registration' - 报名阶段 | 'booking' - 占位阶段
  */
 export function getActivityPhase(activity: Activity): ActivityPhase {
   const now = new Date()
@@ -18,7 +18,7 @@ export function getActivityPhase(activity: Activity): ActivityPhase {
     return 'registration'
   }
 
-  // 当前时间在报名截止时间之后 -> 抢位阶段
+  // 当前时间在报名截止时间之后 -> 占位阶段
   return 'booking'
 }
 
@@ -37,9 +37,9 @@ export function canRegister(activity: Activity): boolean {
 }
 
 /**
- * 判断是否可以抢位
+ * 判断是否可以占位
  * @param activity 活动对象
- * @returns true - 可以抢位
+ * @returns true - 可以占位
  */
 export function canOccupySeat(activity: Activity): boolean {
   // 活动状态检查

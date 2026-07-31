@@ -6,6 +6,7 @@ export default withNuxt(
   antfu({
     ignores: [
       'overrides/**',
+      'ecosystem.config.cjs',
     ],
   }).renamePlugins({
     import: 'import-x', // 将 antfu 的 import 插件重命名，避免与 Nuxt 的 import 插件冲突

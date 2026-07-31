@@ -1,6 +1,6 @@
 # Spot
 
-活动报名与抢位系统，基于 Nuxt、Drizzle ORM、Bun 和 SQLite。
+活动报名与占位系统，基于 Nuxt、Drizzle ORM、Bun 和 SQLite。
 
 ## 本地开发
 

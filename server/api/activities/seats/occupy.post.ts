@@ -35,9 +35,9 @@ export default defineEventHandler(async (event) => {
       throw createError({ statusCode: 400, message: '活动未开始或已结束' })
     }
 
-    // 2.2 检查是否在抢位阶段
+    // 2.2 检查是否在占位阶段
     if (!canOccupySeat(activity)) {
-      throw createError({ statusCode: 400, message: '当前不在抢位阶段' })
+      throw createError({ statusCode: 400, message: '当前不在占位阶段' })
     }
 
     // 2.3 检查手机号是否已报名
@@ -50,10 +50,10 @@ export default defineEventHandler(async (event) => {
       .get()
 
     if (!registration) {
-      throw createError({ statusCode: 400, message: '您尚未报名该活动，无法抢位' })
+      throw createError({ statusCode: 400, message: '您尚未报名该活动，无法占位' })
     }
     if (!registration.teamName?.trim() || !registration.songName?.trim()) {
-      throw createError({ statusCode: 400, message: '请先补齐队伍名称和歌曲名称后再抢位' })
+      throw createError({ statusCode: 400, message: '请先补齐队伍名称和歌曲名称后再占位' })
     }
 
     // 2.4 检查手机号是否已在该活动中占位

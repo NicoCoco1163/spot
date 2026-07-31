@@ -46,7 +46,7 @@ export default defineEventHandler(async (event) => {
     .get()
   const registrationCount = registrationCountResult?.count || 0
 
-  // 5. 如果是抢位阶段，检查是否需要懒加载创建位次
+  // 5. 如果是占位阶段，检查是否需要懒加载创建位次
   if (phase === 'booking') {
     const existingSeatsCount = db.select({ count: count() })
       .from(activitySeats)

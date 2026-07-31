@@ -46,11 +46,11 @@ function handleRegistrationSuccess(mobile: string) {
       <div class="flex items-center justify-between gap-3">
         <div class="min-w-0">
           <CardTitle class="text-base">
-            抢位资格
+            占位资格
           </CardTitle>
         </div>
         <Badge v-if="props.myRegistration" :variant="needsRequiredDetails ? 'secondary' : 'default'">
-          {{ needsRequiredDetails ? '待补资料' : '可抢位' }}
+          {{ needsRequiredDetails ? '待补资料' : '可占位' }}
         </Badge>
       </div>
     </CardHeader>
@@ -71,7 +71,7 @@ function handleRegistrationSuccess(mobile: string) {
         </div>
       </div>
       <Button variant="outline" size="sm" class="h-8 w-full" @click="showEditRegistrationDialog = true">
-        {{ needsRequiredDetails ? '补齐抢位资料' : '修改报名资料' }}
+        {{ needsRequiredDetails ? '补齐占位资料' : '修改报名资料' }}
       </Button>
       <Button
         v-if="props.mySeat"
@@ -89,7 +89,7 @@ function handleRegistrationSuccess(mobile: string) {
       未报名
     </Badge>
     <p class="min-w-0 truncate text-muted-foreground">
-      当前手机号未报名，不能抢位
+      当前手机号未报名，不能占位
     </p>
   </div>
 
@@ -133,7 +133,7 @@ function handleRegistrationSuccess(mobile: string) {
 
           <div class="w-full min-w-0">
             <div class="mb-1 truncate text-xs font-bold leading-none tracking-tight" :class="!props.adminMode && seat.mobile === props.currentMobile ? 'text-white' : ''">
-              {{ seat.isOccupied ? (seat.registration?.teamName || `尾号${seat.mobile?.slice(-4)}`) : '可抢位' }}
+              {{ seat.isOccupied ? (seat.registration?.teamName || `尾号${seat.mobile?.slice(-4)}`) : '可占位' }}
             </div>
             <div
               class="h-[14px] w-full truncate break-all text-[10px] leading-none"
@@ -152,7 +152,7 @@ function handleRegistrationSuccess(mobile: string) {
       <DialogHeader>
         <DialogTitle>修改报名信息</DialogTitle>
         <DialogDescription>
-          抢位阶段手机号不可修改，歌曲名称为抢位必填
+          占位阶段手机号不可修改，歌曲名称为占位必填
         </DialogDescription>
       </DialogHeader>
       <RegistrationForm

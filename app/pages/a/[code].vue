@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, ArrowLeftRight, ChevronDown, ClipboardList, Loader2, RefreshCcw, Share2, Trash2 } from '@lucide/vue'
+import { ArrowLeft, ArrowLeftRight, ChevronDown, ClipboardList, ListOrdered, Loader2, RefreshCcw, Share2, Trash2 } from '@lucide/vue'
 import { useClipboard, useIntervalFn } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 import { useAuthStore } from '~/stores/auth'
@@ -86,6 +86,7 @@ const mobileDirty = computed(() => mobileDraftNormalized.value !== participantMo
 const maskedMobile = computed(() => participantMobile.value.replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2'))
 const mobileLocked = computed(() => phase.value === 'booking' && !!myRegistration.value && mobileSaved.value)
 const occupiedCount = computed(() => seats.value.filter(s => s.isOccupied).length)
+const emptyCount = computed(() => seats.value.filter(s => !s.isOccupied).length)
 const mySeat = computed(() => seats.value.find(s => s.mobile === participantMobile.value))
 const seatCapacity = computed(() => phase.value === 'booking' ? seats.value.length || registrationCount.value : registrationCount.value)
 const seatByMobile = computed(() => {
@@ -156,7 +157,7 @@ const statusText = computed(() => {
     return '已取消'
   if (activity.value.status === 'completed')
     return '已结束'
-  return phase.value === 'registration' ? '报名中' : '抢位中'
+  return phase.value === 'registration' ? '报名中' : '占位中'
 })
 
 const statusVariant = computed(() => {
@@ -179,6 +180,18 @@ const swapFromSeatNumber = ref<number | null>(null)
 const isSwapping = ref(false)
 const isManualRefreshing = ref(false)
 const isRefreshButtonBusy = computed(() => isRefreshing.value || isManualRefreshing.value || (isAdmin.value && isAdminRegistrationsPending.value))
+
+const showFillRemainingDialog = ref(false)
+const fillRemainingConfirmInput = ref<string | number>('')
+const isFillingRemaining = ref(false)
+const fillRemainingConfirmText = computed(() => String(fillRemainingConfirmInput.value ?? '').trim())
+const fillRemainingConfirmValid = computed(() => {
+  const value = Number(fillRemainingConfirmText.value)
+  return fillRemainingConfirmText.value !== ''
+    && Number.isInteger(value)
+    && value === emptyCount.value
+    && value > 0
+})
 
 function rememberMobile(mobile: string) {
   const normalized = normalizeMobile(mobile)
@@ -273,7 +286,7 @@ function resetSwapState() {
 
 function toggleSwapMode() {
   if (phase.value !== 'booking') {
-    toast.warning('仅抢位阶段支持换位')
+    toast.warning('仅占位阶段支持换位')
     return
   }
   if (!authStore.user?.isAdmin)
@@ -387,12 +400,12 @@ async function handleOccupy() {
         mobile: participantMobile.value,
       },
     })
-    toast.success('抢位成功')
+    toast.success('占位成功')
     showOccupyDialog.value = false
     refresh()
   }
   catch (err: any) {
-    toast.error(err.data?.message || err.statusMessage || err.message || '抢位失败')
+    toast.error(err.data?.message || err.statusMessage || err.message || '占位失败')
     refresh()
   }
   finally {
@@ -449,7 +462,7 @@ async function handleExportRegistrationCSV() {
       toast.warning('暂无报名数据')
       return
     }
-    const header = ['手机号', '队伍名称', '歌曲名称', '歌曲时长', '队员名称', '报名时间', '更新时间'].join(',')
+    const header = ['序号', '手机号', '队伍名称', '歌曲名称', '歌曲时长', '队员名称', '报名时间', '更新时间'].join(',')
     const rows = [...registrationList]
       .sort((a, b) => {
         const aSeat = seatByMobile.value.get(a.mobile)?.seatNumber ?? Number.MAX_SAFE_INTEGER
@@ -458,7 +471,8 @@ async function handleExportRegistrationCSV() {
           return aSeat - bSeat
         return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
       })
-      .map(r => [
+      .map((r, index) => [
+        escapeCsv(index + 1),
         escapeCsv(r.mobile),
         escapeCsv(r.teamName),
         escapeCsv(r.songName),
@@ -482,10 +496,11 @@ function handleExportSeatCSV() {
     toast.warning('暂无占位数据')
     return
   }
-  const header = ['位次', '手机号', '队伍名称', '歌曲名称', '歌曲时长', '队员名称', '报名时间', '占位时间'].join(',')
+  const header = ['序号', '位次', '手机号', '队伍名称', '歌曲名称', '歌曲时长', '队员名称', '报名时间', '占位时间'].join(',')
   const rows = [...occupiedSeats]
     .sort((a, b) => a.seatNumber - b.seatNumber)
-    .map(s => [
+    .map((s, index) => [
+      escapeCsv(index + 1),
       escapeCsv(s.seatNumber),
       escapeCsv(s.mobile),
       escapeCsv(s.registration?.teamName),
@@ -523,6 +538,56 @@ function formatDurationCsv(seconds: unknown) {
   const m = Math.floor(value / 60)
   const s = value % 60
   return `${padDuration(m)}:${padDuration(s)}`
+}
+
+function openFillRemainingDialog() {
+  if (emptyCount.value <= 0) {
+    toast.warning('当前无剩余空位')
+    return
+  }
+  fillRemainingConfirmInput.value = ''
+  showFillRemainingDialog.value = true
+}
+
+function closeFillRemainingDialog() {
+  showFillRemainingDialog.value = false
+  fillRemainingConfirmInput.value = ''
+}
+
+async function handleFillRemainingSeats() {
+  if (!fillRemainingConfirmValid.value || isFillingRemaining.value)
+    return
+
+  isFillingRemaining.value = true
+  try {
+    const expectedEmptyCount = Number(fillRemainingConfirmText.value)
+    const result = await $fetch<{
+      filled: number
+      emptyBefore: number
+      emptyAfter: number
+      skippedIncomplete: number
+    }>('/api/activities/admin/fill-remaining-seats', {
+      method: 'POST',
+      body: {
+        activityCode: activityCode.value,
+        expectedEmptyCount,
+      },
+    })
+
+    closeFillRemainingDialog()
+    const skipHint = result.skippedIncomplete > 0
+      ? `，${result.skippedIncomplete} 人因未补齐必填信息被跳过`
+      : ''
+    toast.success(`已填入 ${result.filled} 个空位${skipHint}，剩余 ${result.emptyAfter} 个空位`)
+    await Promise.all([refresh(), refreshAdminRegistrations()])
+  }
+  catch (err: any) {
+    toast.error(err.data?.message || err.statusMessage || err.message || '填满空位失败')
+    await Promise.all([refresh(), refreshAdminRegistrations()])
+  }
+  finally {
+    isFillingRemaining.value = false
+  }
 }
 
 function goBack() {
@@ -675,7 +740,7 @@ watch(isAdmin, (value) => {
       </div>
 
       <div v-if="!isAdmin && !mobileReady" class="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
-        输入有效中国大陆手机号并点击保存后，才会记录到浏览器并加载报名状态；报名截止后仅已报名手机号可抢位。
+        输入有效中国大陆手机号并点击保存后，才会记录到浏览器并加载报名状态；报名截止后仅已报名手机号可占位。
       </div>
 
       <ActivityRegistrationPhase
@@ -887,7 +952,7 @@ watch(isAdmin, (value) => {
                   阶段
                 </div>
                 <div class="truncate text-sm font-medium">
-                  {{ phase === 'registration' ? '报名' : '抢位' }}
+                  {{ phase === 'registration' ? '报名' : '占位' }}
                 </div>
               </div>
               <div class="rounded-md bg-muted/50 px-2 py-2">
@@ -998,7 +1063,7 @@ watch(isAdmin, (value) => {
                     </Badge>
                   </div>
                   <div class="text-xs leading-5 text-muted-foreground">
-                    抢位阶段可选择两个已占用位次并交换报名信息
+                    占位阶段可选择两个已占用位次并交换报名信息
                   </div>
                 </div>
                 <Button
@@ -1012,10 +1077,41 @@ watch(isAdmin, (value) => {
                   {{ isSwapMode ? '退出换位模式' : '进入换位模式' }}
                 </Button>
                 <div v-if="phase !== 'booking'" class="text-xs text-muted-foreground">
-                  报名截止后才进入抢位阶段，届时可调整已占用位次。
+                  报名截止后才进入占位阶段，届时可调整已占用位次。
                 </div>
                 <div v-else-if="occupiedCount < 2" class="text-xs text-muted-foreground">
                   至少需要 2 个已占用位次才可以交换。
+                </div>
+              </div>
+
+              <Separator v-if="phase === 'booking'" />
+
+              <div v-if="phase === 'booking'" class="grid gap-3 p-3">
+                <div class="grid gap-1">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="text-sm font-medium">
+                      填满空位
+                    </div>
+                    <Badge variant="secondary" class="shrink-0">
+                      剩余 {{ emptyCount }}
+                    </Badge>
+                  </div>
+                  <div class="text-xs leading-5 text-muted-foreground">
+                    按报名顺序，将未抢位且已补齐队伍名/歌曲名的用户依次填入空位；确认时需输入当前剩余空位数
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="w-full"
+                  :disabled="emptyCount === 0 || isFillingRemaining"
+                  @click="openFillRemainingDialog"
+                >
+                  <ListOrdered class="mr-2 h-4 w-4" />
+                  按报名顺序填满空位
+                </Button>
+                <div v-if="emptyCount === 0" class="text-xs text-muted-foreground">
+                  当前无剩余空位。
                 </div>
               </div>
             </div>
@@ -1049,7 +1145,7 @@ watch(isAdmin, (value) => {
             取消
           </Button>
           <Button :disabled="isOccupying" @click="handleOccupy">
-            {{ isOccupying ? '处理中...' : '确认抢位' }}
+            {{ isOccupying ? '处理中...' : '确认占位' }}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1088,6 +1184,47 @@ watch(isAdmin, (value) => {
           </Button>
           <Button variant="destructive" :disabled="isDeletingRegistration" @click="handleDeleteRegistration">
             {{ isDeletingRegistration ? '删除中...' : '确认删除' }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog
+      :open="showFillRemainingDialog"
+      @update:open="open => !open && closeFillRemainingDialog()"
+    >
+      <DialogContent class="max-w-[calc(100%-1.5rem)]">
+        <DialogHeader>
+          <DialogTitle>确认填满剩余空位</DialogTitle>
+          <DialogDescription>
+            将按报名时间顺序，把未抢位且已补齐队伍名称、歌曲名称的用户依次填入空位（空位号从小到大）。未补齐必填信息的报名会被跳过。
+          </DialogDescription>
+        </DialogHeader>
+        <div class="space-y-2">
+          <Label for="fill-remaining-confirm">
+            请输入当前剩余空位数以确认
+          </Label>
+          <Input
+            id="fill-remaining-confirm"
+            v-model="fillRemainingConfirmInput"
+            type="text"
+            inputmode="numeric"
+            pattern="[0-9]*"
+            autocomplete="off"
+            placeholder="输入剩余空位数"
+            :disabled="isFillingRemaining"
+            @keyup.enter="handleFillRemainingSeats"
+          />
+        </div>
+        <DialogFooter class="grid grid-cols-2 gap-2">
+          <Button variant="outline" :disabled="isFillingRemaining" @click="closeFillRemainingDialog">
+            取消
+          </Button>
+          <Button
+            :disabled="!fillRemainingConfirmValid || isFillingRemaining"
+            @click="handleFillRemainingSeats"
+          >
+            {{ isFillingRemaining ? '处理中...' : '确认填满' }}
           </Button>
         </DialogFooter>
       </DialogContent>

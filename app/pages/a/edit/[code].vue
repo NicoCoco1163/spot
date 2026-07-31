@@ -74,7 +74,7 @@ async function handleAdvanceToBooking() {
         code: activityCode.value,
       },
     })
-    toast.success('已切换到抢位阶段')
+    toast.success('已切换到占位阶段')
     showAdvanceConfirm.value = false
     router.push(`/a/${activityCode.value}`)
   }
@@ -185,7 +185,7 @@ const onSubmit = form.handleSubmit(async (values) => {
                   <DateTimePicker v-bind="componentField" placeholder="选择报名截止时间" />
                 </FormControl>
                 <FormDescription>
-                  截止前可报名；截止后只允许已报名手机号抢位，位次数等于报名人数。
+                  截止前可报名；截止后只允许已报名手机号占位，位次数等于报名人数。
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -221,7 +221,7 @@ const onSubmit = form.handleSubmit(async (values) => {
                 <div class="min-w-0">
                   <div class="text-sm font-medium">阶段操作</div>
                   <div class="text-xs leading-5 text-muted-foreground">
-                    立即结束报名，并开放已报名手机号抢位。
+                    立即结束报名，并开放已报名手机号占位。
                   </div>
                 </div>
                 <Button
@@ -233,7 +233,7 @@ const onSubmit = form.handleSubmit(async (values) => {
                   @click="openAdvanceConfirm"
                 >
                   <Loader2 v-if="isAdvancing" class="mr-2 h-4 w-4 animate-spin" />
-                  {{ isAdvancing ? '切换中' : '进入抢位' }}
+                  {{ isAdvancing ? '切换中' : '进入占位' }}
                 </Button>
               </div>
             </div>
@@ -256,9 +256,9 @@ const onSubmit = form.handleSubmit(async (values) => {
     <Dialog v-model:open="showAdvanceConfirm">
       <DialogContent class="max-w-[calc(100%-1.5rem)]">
         <DialogHeader>
-          <DialogTitle>确认进入抢位阶段</DialogTitle>
+          <DialogTitle>确认进入占位阶段</DialogTitle>
           <DialogDescription>
-            进入后将结束报名并开放抢位，仅已报名手机号可以抢位，此操作不可撤回。
+            进入后将结束报名并开放占位，仅已报名手机号可以占位，此操作不可撤回。
           </DialogDescription>
         </DialogHeader>
         <DialogFooter class="mt-4 grid grid-cols-2 gap-2">

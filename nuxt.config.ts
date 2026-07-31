@@ -5,6 +5,9 @@ import { defineNuxtConfig } from 'nuxt/config'
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
+  devServer: {
+    host: 'localhost',
+  },
   css: ['~/assets/css/tailwind.css'],
   vite: {
     plugins: [

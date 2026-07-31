@@ -1,5 +1,5 @@
 <template>
-  <div class="border-b border-white/10 px-3 pt-2">
+  <div class="border-b border-white/10 px-3 pt-4 pb-1">
     <img
       src="/slogan.png"
       alt="Random Play Dance"

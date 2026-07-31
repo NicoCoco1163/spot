@@ -67,7 +67,7 @@ const statusOptions = [
 const phaseOptions = [
   { value: 'all', label: '全部阶段' },
   { value: 'registration', label: '报名中' },
-  { value: 'booking', label: '抢位中' },
+  { value: 'booking', label: '占位中' },
 ]
 
 watch([status, phase, keyword], () => {
@@ -84,7 +84,7 @@ function statusLabel(value: string) {
 }
 
 function phaseLabel(value: string) {
-  return value === 'registration' ? '报名中' : '抢位中'
+  return value === 'registration' ? '报名中' : '占位中'
 }
 
 function activityBadgeVariant(item: any) {
